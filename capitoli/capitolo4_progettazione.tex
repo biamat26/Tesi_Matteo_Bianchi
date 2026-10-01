@@ -1,0 +1,416 @@
+\label{cap:progettazione}
+
+Questo capitolo descrive la progettazione della gestione del ciclo di vita di un Task, a partire dai requisiti definiti nel Capitolo~\ref{cap:requisiti}, ai quali si fa riferimento tramite i relativi identificativi (RF1, RF2, \ldots). La Sezione~\ref{sec:execute} descrive la progettazione di \texttt{execute}, mostrando come un'unica implementazione possa servire sia le invocazioni sincrone sia quelle in streaming. La Sezione~\ref{sec:cancel} tratta la progettazione di \texttt{cancel}, la divisione dei compiti con il framework e il modo in cui \texttt{cancel} ed \texttt{execute} collaborano. La Sezione~\ref{sec:cancel-streaming} analizza infine il caso in cui la cancellazione arriva durante una comunicazione in streaming.
+
+
+
+\section{Progettazione di \texorpdfstring{\texttt{execute}}{execute}: modalità stream e invoke}
+\label{sec:execute}
+
+Come stabilito nel Capitolo~\ref{cap:requisiti}, l'interfaccia \texttt{AgentExecutor} prevede un unico metodo \texttt{execute}, invocato dal framework indipendentemente dalla modalità scelta dal client. I requisiti RF1 e RF2 richiedono però di gestire correttamente sia le chiamate sincrone (\texttt{SendMessage}) sia quelle in streaming (\texttt{SendStreamingMessage}), e in quest'ultimo caso di restituire anche tutti gli eventi intermedi. Il problema progettuale consisteva quindi nel soddisfare entrambe le modalità con un'unica implementazione di \texttt{execute}.
+
+Una prima soluzione possibile consiste nel far verificare a \texttt{execute}, a ogni invocazione, quale operazione abbia generato la richiesta, scegliendo di conseguenza quale metodo del grafo LangGraph chiamare. Con \texttt{SendMessage}, \texttt{execute} utilizzerebbe \texttt{ainvoke}, un metodo che esegue tutta l'elaborazione e restituisce un unico valore, cioè lo stato finale, solo alla fine. Con \texttt{SendStreamingMessage} utilizzerebbe invece \texttt{astream}, che restituisce lo stato del grafo dopo ogni passo, così da pubblicare i relativi eventi sulla \texttt{EventQueue} mentre l'esecuzione avanza. Si avrebbero quindi due percorsi distinti nella stessa funzione, scelti con un controllo condizionale all'inizio di \texttt{execute}. Questo era l'approccio adottato dall'executor già presente in azienda, che sceglieva la modalità in base al nome del metodo RPC contenuto nella richiesta.
+
+Questo approccio presenta però due limiti concreti. Il primo è che introduce nella logica applicativa dell'agente un'informazione che appartiene al livello di trasporto, cioè quale operazione RPC abbia originato la richiesta, in contrasto con il principio di separazione delle responsabilità. Il secondo è che costringe a mantenere due percorsi di codice paralleli e in gran parte ridondanti, destinati a evolvere in modo indipendente. Ogni caso particolare, come la richiesta di ulteriori input all'utente, andrebbe gestito allo stesso modo in entrambi i percorsi, e un aggiornamento applicato a uno solo dei due renderebbe diverso il comportamento delle due modalità senza che la differenza risulti evidente.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        actor/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.7cm, align=center, fill=blue!5, font=\footnotesize},
+        lifeline/.style={dashed, thin},
+        msg/.style={-{Stealth[length=2.5mm]}, thick, font=\scriptsize}
+    ]
+        \node[actor] (c1) at (0,0) {Client};
+        \node[actor] (h1) at (4.5,0) {RequestHandler};
+        \node[actor] (e1) at (9,0) {AgentExecutor};
+        \draw[lifeline] (c1) -- ++(0,-5.0);
+        \draw[lifeline] (h1) -- ++(0,-5.0);
+        \draw[lifeline] (e1) -- ++(0,-5.0);
+
+        \draw[msg] (0,-0.8) -- (4.5,-0.8) node[midway, above]{SendMessage};
+        \draw[msg] (4.5,-1.5) -- (9,-1.5) node[midway, above]{execute()};
+        \draw[dashed, rounded corners] (4.8,-1.9) rectangle (8.7,-3.2);
+        \node[font=\tiny, align=center] at (6.75,-2.55) {eventi\\ SUBMITTED / WORKING\\pubblicati ma non inoltrati};
+        \draw[msg] (9,-4.0) -- (4.5,-4.0) node[midway, above]{evento COMPLETED};
+        \draw[msg] (4.5,-4.6) -- (0,-4.6) node[midway, above]{risposta finale (Task)};
+
+        \node[font=\scriptsize] at (4.5,-5.5) {(a) \texttt{SendMessage} -- il client riceve solo il risultato finale};
+    \end{tikzpicture}
+
+    \vspace{1cm}
+
+    \begin{tikzpicture}[
+        actor/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.7cm, align=center, fill=blue!5, font=\footnotesize},
+        lifeline/.style={dashed, thin},
+        msg/.style={-{Stealth[length=2.5mm]}, thick, font=\scriptsize}
+    ]
+        \node[actor] (c2) at (0,0) {Client};
+        \node[actor] (h2) at (4.5,0) {RequestHandler};
+        \node[actor] (e2) at (9,0) {AgentExecutor};
+        \draw[lifeline] (c2) -- ++(0,-6.5);
+        \draw[lifeline] (h2) -- ++(0,-6.5);
+        \draw[lifeline] (e2) -- ++(0,-6.5);
+
+        \draw[msg] (0,-0.8) -- (4.5,-0.8) node[midway, above]{SendStreamingMessage};
+        \draw[msg] (4.5,-1.5) -- (9,-1.5) node[midway, above]{execute()};
+
+        \draw[msg] (9,-2.5) -- (4.5,-2.5) node[midway, above]{evento SUBMITTED};
+        \draw[msg] (4.5,-3) -- (0,-3) node[midway, above]{evento SUBMITTED};
+
+        \draw[msg] (9,-4) -- (4.5,-4) node[midway, above]{evento WORKING};
+        \draw[msg] (4.5,-4.5) -- (0,-4.5) node[midway, above]{evento WORKING};
+
+        \node[font=\large, fill=white, inner sep=1pt] at (4.5,-5.0) {$\vdots$};
+
+        \draw[msg] (9,-5.5) -- (4.5,-5.5) node[midway, above]{evento COMPLETED};
+        \draw[msg] (4.5,-6) -- (0,-6) node[midway, above]{evento COMPLETED};
+
+        \node[font=\scriptsize] at (4.5,-7) {(b) \texttt{SendStreamingMessage} -- ogni evento è inoltrato subito};
+    \end{tikzpicture}
+    \caption{La stessa esecuzione di \texttt{execute} con due modalità di consegna al client, gestite interamente dal \texttt{RequestHandler}.}
+    \label{fig:sequence-comparison}
+\end{figure}
+
+Si è quindi scelto di adottare un'unica strategia di esecuzione, indipendente dalla modalità di invocazione. \texttt{execute} itera sul grafo LangGraph sempre in streaming, tramite \texttt{astream}, e pubblica un evento sulla \texttt{EventQueue} a ogni passo significativo. È poi il framework, e in particolare il \texttt{DefaultRequestHandler}, a stabilire come consumare questa sequenza di eventi \cite{a2apythontutorial} in base alla modalità con cui il client ha effettuato la richiesta, come mostrato in Figura~\ref{fig:sequence-comparison}.
+
+Nel pannello (a) il client invia una richiesta \texttt{SendMessage}. Il \texttt{RequestHandler} la riceve e invoca \texttt{execute}, che durante l'esecuzione pubblica sulla \texttt{EventQueue} gli eventi \texttt{SUBMITTED} e \texttt{WORKING}. Il \texttt{RequestHandler} riceve questi eventi ma non li inoltra al client. La connessione resta aperta, senza che vi transiti alcun dato, finché non viene pubblicato un evento che porta il Task in uno stato terminale (\texttt{COMPLETED}, \texttt{FAILED}, \texttt{CANCELED} o \texttt{REJECTED}) oppure interrotto (\texttt{INPUT\_REQUIRED} o \texttt{AUTH\_REQUIRED}) \cite{a2aspec}. Solo a quel punto il \texttt{RequestHandler} restituisce al client un'unica risposta, che contiene il Task. Questo è il comportamento predefinito, ma il client può anche richiedere una risposta immediata con l'opzione \texttt{return\_immediately}, lasciando che l'elaborazione continui in background \cite{a2apythonsdk}.
+
+Nel pannello (b) la stessa esecuzione di \texttt{execute} parte da una richiesta \texttt{SendStreamingMessage}. Anche qui la connessione resta aperta per tutta l'esecuzione, ma il \texttt{RequestHandler} si comporta diversamente. La risposta è uno stream di eventi, e ogni evento pubblicato sulla \texttt{EventQueue} viene inoltrato al client non appena ricevuto. Lo stream si chiude dopo l'evento che porta il Task in uno stato terminale o interrotto.
+
+Durante l'esecuzione il Task passa attraverso una serie di stati, che \texttt{execute} comunica esplicitamente tramite il \texttt{TaskUpdater} e che sono riassunti in Figura~\ref{fig:task-lifecycle} (per brevità, nel diagramma è omesso il prefisso \texttt{TASK\_STATE\_} comune a tutti gli stati).
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{\linewidth}{!}{%
+    \begin{tikzpicture}[
+        state/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1cm, align=center, fill=blue!5, font=\small},
+        terminal/.style={state, fill=gray!15, very thick},
+        arrow/.style={-{Stealth[length=3mm]}, thick},
+        dashedarrow/.style={arrow, dashed},
+        dottedarrow/.style={arrow, dotted},
+        lbl/.style={font=\footnotesize}
+    ]
+        \node[state] (submitted) at (-2.5,0) {SUBMITTED};
+        \node[state] (working) at (3.5,0) {WORKING};
+        \node[state] (input) at (3.5,4) {INPUT\_REQUIRED};
+        \node[terminal] (completed) at (10,2) {COMPLETED};
+        \node[terminal] (failed) at (10,0) {FAILED};
+        \node[terminal] (canceled) at (10,-2) {CANCELED};
+
+        \draw[arrow] (submitted) -- (working) node[midway, above, lbl]{avvio elaborazione};
+
+        \draw[arrow] (3.9,0.5) -- (3.9,3.5) node[midway, right, lbl, xshift=3pt] {input necessario};
+        \draw[dashedarrow] (3.1,3.5) -- (3.1,0.5) node[midway, left, lbl, xshift=-3pt] {nuovo messaggio};
+
+        \draw[arrow] (working) to[loop below, looseness=8] node[below=2pt, lbl] {step intermedio} (working);
+
+        \draw[arrow] (working) -- (completed) node[midway, above, sloped, lbl]{successo};
+        \draw[arrow] (working) -- (failed) node[midway, above, lbl]{eccezione};
+        \draw[arrow] (working) -- (canceled) node[pos=0.4, below, sloped, lbl]{cancellazione};
+
+        \draw[arrow] (submitted.south) -- (-2.5,-2) -- (canceled);
+        \node[lbl] at (3.5,-2.3) {cancellazione immediata};
+
+        \draw[dottedarrow] (input.east) -- (12.8,4) -- (12.8,-2) -- (canceled.east);
+        \node[lbl, rotate=-90] at (13.15,1) {cancellazione (\texttt{cancel})};
+    \end{tikzpicture}%
+    }
+    \caption{Ciclo di vita del Task. Le frecce continue e tratteggiate rappresentano le transizioni prodotte da \texttt{execute}, quella punteggiata la transizione prodotta direttamente da \texttt{cancel} (Sezione~\ref{sec:cancel}). Gli stati con bordo spesso (in grigio) sono terminali. La specifica A2A prevede anche gli stati \texttt{REJECTED} (terminale) e \texttt{AUTH\_REQUIRED} (interrotto), non utilizzati in questa implementazione \cite{a2aspec}.}
+\label{fig:task-lifecycle}
+\end{figure}
+
+Quando la richiesta avvia un nuovo Task, \texttt{execute} pubblica per prima cosa un evento che lo porta in \texttt{SUBMITTED}. Subito dopo, prima ancora di iterare sul grafo, pubblica esplicitamente il passaggio a \texttt{WORKING}. In questo modo il Task passa sempre da questo stato prima di arrivare a un esito, anche quando il grafo produce il risultato in un solo passo. Il Task resta in \texttt{WORKING} per tutta l'elaborazione, e a ogni passo intermedio \texttt{execute} pubblica un evento di avanzamento, che in figura corrisponde alla transizione ad anello.
+
+Se l'agente necessita di ulteriori informazioni, il Task passa in \texttt{INPUT\_REQUIRED} e \texttt{execute} termina. Il messaggio successivo dell'utente sullo stesso Task (freccia tratteggiata) porta a una nuova invocazione di \texttt{execute}, che riporta il Task in \texttt{WORKING} e riprende l'elaborazione. In questo caso l'evento \texttt{SUBMITTED} non viene pubblicato di nuovo, perché il Task esiste già. Altrimenti l'esecuzione termina in uno dei tre stati terminali: \texttt{COMPLETED} se va a buon fine, \texttt{FAILED} se si verifica un'eccezione, oppure \texttt{CANCELED} se arriva una richiesta di cancellazione, durante l'elaborazione o, come indica il percorso ad angolo retto, prima ancora che inizi. Il passaggio da \texttt{INPUT\_REQUIRED} a \texttt{CANCELED} (freccia punteggiata) non è prodotto da \texttt{execute}, perché in quello stato non c'è nessuna esecuzione attiva. Se ne occupa direttamente \texttt{cancel}, come descritto nella Sezione~\ref{sec:cancel}.
+
+L'Algoritmo~\ref{alg:execute} formalizza la logica appena descritta. Due aspetti richiedono particolare attenzione. Il primo è la posizione del blocco \texttt{try}, che si apre subito dopo la registrazione del task nel registro dei task in esecuzione. In questo modo qualsiasi cancellazione o eccezione viene intercettata, anche se arriva mentre si stanno pubblicando \texttt{SUBMITTED} o \texttt{WORKING}, e il blocco \texttt{finally} rimuove comunque il task dal registro. Il secondo è la variabile $esito\_definito$, che viene impostata appena il grafo produce un esito (completamento o richiesta di input), prima che questo venga pubblicato. Da quel momento, una cancellazione o un'eccezione arrivata in ritardo non può più sovrascrivere l'esito con \texttt{CANCELED} o \texttt{FAILED}. Il motivo per cui servono il registro e la gestione di \texttt{CancelledError} è spiegato nella Sezione~\ref{sec:cancel}.
+
+\begin{algorithm}[htbp]
+\caption{Logica di \texttt{execute}}
+\label{alg:execute}
+\begin{algorithmic}[1]
+\Function{Execute}{$context$, $event\_queue$}
+    \State $query \gets$ \Call{OttieniInputUtente}{$context$}
+    \State $task\_id \gets context.task\_id$
+    \State $context\_id \gets context.context\_id$
+    \State $updater \gets$ nuovo \Call{TaskUpdater}{$event\_queue$, $task\_id$, $context\_id$}
+    \State $esito\_definito \gets$ \textbf{falso}
+    \State $registro[task\_id] \gets$ task \texttt{asyncio} corrente
+    \Try
+        \If{$context.current\_task$ non è definito} \Comment{nuovo Task}
+            \State Pubblica evento Task($task\_id$, stato = \textsc{Submitted})
+        \EndIf
+        \State $updater.$\Call{AvviaLavoro}{}
+        \For{$step$ in $agente.$\Call{Stream}{$query$, $context\_id$}}
+            \If{$step$ indica task completato}
+                \State $esito\_definito \gets$ \textbf{vero}
+                \State $updater.$\Call{AggiungiArtifact}{$step.risultato$}
+                \State $updater.$\Call{Completa}{}
+                \State \textbf{break}
+            \ElsIf{$step$ richiede input utente}
+                \State $esito\_definito \gets$ \textbf{vero}
+                \State $updater.$\Call{RichiediInput}{$step.messaggio$}
+                \State \textbf{break}
+            \Else
+                \State $updater.$\Call{AggiornaAvanzamento}{$step.messaggio$}
+            \EndIf
+        \EndFor
+    \Catch{\textsc{CancelledError}}
+        \If{\textbf{non} $esito\_definito$}
+            \State $updater.$\Call{Cancella}{}
+        \EndIf
+        \State rilancia \textsc{CancelledError}
+    \Catch{\textsc{Exception} $e$}
+        \If{\textbf{non} $esito\_definito$}
+            \State $updater.$\Call{Fallito}{}
+        \EndIf
+        \State solleva \textsc{InternalError}
+    \Finally
+        \State rimuovi $task\_id$ dal registro
+    \EndTry
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\FloatBarrier
+
+
+\section{Progettazione di \texorpdfstring{\texttt{cancel}}{cancel}}
+\label{sec:cancel}
+
+Come stabilito nel Capitolo~\ref{cap:requisiti}, l'interfaccia \texttt{AgentExecutor} definisce \texttt{cancel} come un metodo asincrono basato su \texttt{asyncio}. In questo contesto, invocare \texttt{cancel()} su un task \texttt{asyncio} non ne interrompe subito l'esecuzione, ma programma il sollevamento di un'eccezione \texttt{asyncio.CancelledError} al primo punto di sospensione utile, tipicamente un'istruzione \texttt{await} \cite{pythonasynciotask}. Si parla quindi di cancellazione \emph{cooperativa}, perché è il codice in esecuzione, e non il chiamante, a determinare quando l'interruzione avviene davvero.
+
+\subsection{Divisione dei compiti con il framework}
+
+Prima di progettare \texttt{cancel} è necessario chiarire quali operazioni siano già svolte dall'SDK. Nella versione adottata, il \texttt{DefaultRequestHandler} associa a ogni Task un task \texttt{asyncio} dedicato, che nel seguito verrà indicato come \emph{task di esecuzione}, e che invoca \texttt{execute} a ogni nuova richiesta. Il task di esecuzione non termina insieme a \texttt{execute}, ma resta attivo tra una richiesta e l'altra in attesa di nuovi messaggi, e si chiude solo quando il Task arriva in uno stato terminale. Di conseguenza, esso risulta ancora attivo anche quando il Task si trova in \texttt{INPUT\_REQUIRED}.
+
+Quando arriva una richiesta \texttt{CancelTask}, il gestore esegue quattro operazioni in quest'ordine. Innanzitutto verifica che l'identificativo corrisponda a un Task esistente, e in caso contrario solleva \texttt{TaskNotFoundError}. Poi, se il task di esecuzione è ancora attivo, invoca il metodo \texttt{cancel} dell'\texttt{AgentExecutor} e, solo quando questo è terminato, cancella il task di esecuzione. Infine, se il Task non è ancora in uno stato terminale, imposta il suo stato memorizzato a \texttt{CANCELED} \cite{a2apythonsdk}.
+
+L'ordine di queste operazioni non è casuale, ed è motivato esplicitamente nel codice dell'SDK. Il task di esecuzione viene cancellato solo dopo che il metodo \texttt{cancel} dell'\texttt{AgentExecutor} è terminato. Così il componente responsabile dello stato terminale del Task può ancora pubblicarlo sulla coda di eventi, che altrimenti rischierebbe di essere chiusa da una cancellazione anticipata del task. Lo stato \texttt{CANCELED} scritto direttamente dal framework, invece, non ha nessuna garanzia di arrivare a un client in streaming, perché quando viene registrato le code di eventi potrebbero essere già chiuse \cite{a2apythonsdk}. L'SDK presuppone pertanto che sia l'agente a gestire lo stato terminale, in linea con il contratto dell'interfaccia, secondo cui l'agente deve provare a interrompere il Task e pubblicare l'evento che lo porta in \texttt{CANCELED} \cite{a2apythondocs}. L'intervento automatico del framework costituisce quindi un meccanismo di \emph{fallback}, e non un'alternativa alla corretta gestione da parte dell'agente.
+
+Nella versione adottata, però, l'SDK non soddisfa due requisiti del Capitolo~\ref{cap:requisiti}. Una richiesta \texttt{CancelTask} su un Task già terminale viene respinta con \texttt{TaskNotCancelableError} solo se il gestore ha già rilasciato le risorse associate al Task. Se invece arriva subito dopo il completamento, non produce nessun errore e il Task viene restituito nel suo stato corrente. Il risultato dipende quindi dal momento in cui arriva la richiesta, in contrasto con il requisito RF5. Inoltre, un nuovo messaggio inviato a un Task terminale viene respinto con \texttt{InvalidParamsError} invece che con \texttt{UnsupportedOperationError}, contrariamente a quanto chiede il requisito RF7. Entrambi i comportamenti sono stati verificati sperimentalmente, e il secondo è oggetto di una modifica proposta nel repository dell'SDK dopo la versione adottata \cite{a2apythonpr1268}. Per colmare queste differenze è stata introdotta una sottoclasse del \texttt{DefaultRequestHandler}, chiamata \texttt{A2ARequestHandler}, che prima di passare la richiesta all'implementazione dell'SDK legge lo stato memorizzato del Task e, se è terminale, solleva l'errore previsto dalla specifica. Questa modifica rientra nel perimetro del lavoro, che comprende anche la parte di server che espone l'endpoint A2A. Si noti che il controllo e la delega non avvengono in modo atomico: se il Task diventa terminale proprio tra le due operazioni prevale il comportamento dell'SDK.
+
+\subsection{Il registro dei task in esecuzione}
+
+Resta da definire il compito di \texttt{cancel} nell'\texttt{AgentExecutor}. A tal fine è stato introdotto un \emph{registro dei task in esecuzione}, cioè un dizionario che associa a ogni \texttt{task\_id} il task \texttt{asyncio} che sta eseguendo \texttt{execute}. Il registro viene popolato da \texttt{execute} all'avvio e ripulito dalla stessa funzione al termine, qualunque sia l'esito (Algoritmo~\ref{alg:execute}). La presenza di un Task nel registro indica quindi l'esistenza di un'esecuzione attiva di \texttt{execute}. Dato che il registro è indicizzato per \texttt{task\_id}, le esecuzioni di Task diversi restano del tutto indipendenti (requisito RF9).
+
+Nella versione adottata il registro non è strettamente necessario per interrompere l'esecuzione. Il task \texttt{asyncio} in cui viene eseguito \texttt{execute} è infatti lo stesso task di esecuzione gestito dall'SDK, che, come descritto in precedenza, viene comunque cancellato dopo l'invocazione di \texttt{cancel}. Una verifica sperimentale lo conferma: con un'implementazione di \texttt{cancel} completamente vuota, l'elaborazione viene interrotta lo stesso ed \texttt{execute} pubblica regolarmente l'evento \texttt{CANCELED}. La chiamata a \texttt{cancel()} sul task registrato è quindi ridondante. Si è scelto comunque di mantenerla, perché il contratto dell'interfaccia assegna esplicitamente all'agente il compito di provare a interrompere il Task \cite{a2apythondocs}, mentre la cancellazione forzata da parte del gestore delle richieste è un dettaglio implementativo che l'interfaccia non garantisce. Questa ridondanza, peraltro, non produce effetti collaterali. Tra la chiamata a \texttt{cancel()} effettuata dal metodo \texttt{cancel} e quella successiva dell'SDK non ci sono punti di sospensione, quindi le due richieste portano al sollevamento di un'unica \texttt{CancelledError}.
+
+La funzione principale del registro è però un'altra: permettere a \texttt{cancel} di stabilire se debba pubblicare direttamente l'evento \texttt{CANCELED}. Il gestore delle richieste invoca \texttt{cancel} sia quando \texttt{execute} è in corso sia quando il Task è in attesa di input, perché in entrambi i casi il suo task di esecuzione risulta ancora attivo. Le due situazioni vanno però gestite in modo opposto, e il comportamento corretto in entrambi i casi è stato verificato sperimentalmente. Se \texttt{execute} è in corso, \texttt{cancel} non deve pubblicare \texttt{CANCELED}, perché se ne occupa già \texttt{execute}. Una doppia pubblicazione genera eventi duplicati sullo stream e, nel caso descritto nella Sezione~\ref{sec:cancel-streaming}, può persino portare alla sequenza contraddittoria \texttt{CANCELED} seguito da \texttt{COMPLETED}. Se invece il Task è in attesa di input, non c'è nessuna esecuzione che possa pubblicare l'evento, quindi deve farlo \texttt{cancel}. Altrimenti il framework scriverebbe \texttt{CANCELED} solo nello stato memorizzato, e un client iscritto agli aggiornamenti del Task tramite \texttt{SubscribeToTask} vedrebbe lo stream chiudersi senza ricevere alcun evento terminale; si tratta di un limite dell'SDK già segnalato nel suo repository \cite{a2apythonissue1175}. Soltanto \texttt{execute} sa se un'esecuzione è in corso, e il registro serve a rendere questa informazione disponibile a \texttt{cancel}.
+
+Combinando i controlli di \texttt{A2ARequestHandler} e il registro, una richiesta di cancellazione può ricadere in tre scenari, ciascuno legato a uno o più requisiti del Capitolo~\ref{cap:requisiti}:
+
+\begin{enumerate}
+    \item \textbf{Task in esecuzione} (RF3). Il Task è presente nel registro, quindi \texttt{cancel} invoca \texttt{cancel()} sul task \texttt{asyncio} corrispondente, come ulteriore garanzia oltre all'interruzione che l'SDK esegue comunque, e non pubblica nessun evento. Lo stato \texttt{CANCELED} viene pubblicato da \texttt{execute}, come discusso più avanti.
+    \item \textbf{Task in attesa, senza esecuzione attiva} (RF4). Il Task esiste, non è in uno stato terminale e non è nel registro. È il caso tipico di un Task in \texttt{INPUT\_REQUIRED}, per il quale \texttt{execute} è già terminata in attesa di un nuovo messaggio (Sezione~\ref{sec:execute}). Non essendoci nulla da interrompere, \texttt{cancel} pubblica direttamente l'evento che porta il Task in \texttt{CANCELED}.
+    \item \textbf{Task non cancellabile} (RF5, RF6). Se il Task non esiste o è già in uno stato terminale, \texttt{A2ARequestHandler} rifiuta la richiesta prima che arrivi all'\texttt{AgentExecutor}, sollevando rispettivamente \texttt{TaskNotFoundError} o \texttt{TaskNotCancelableError}. Lo stesso vale per le richieste di cancellazione successive alla prima, che trovano il Task già in \texttt{CANCELED}, e quindi lo stato del Task non cambia dopo la prima richiesta (RF8).
+\end{enumerate}
+
+La Figura~\ref{fig:cancel-flow} mostra l'ordine in cui vengono valutate queste condizioni e quale componente si occupa di ciascun controllo, mentre l'Algoritmo~\ref{alg:cancel} ne formalizza la logica.
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{\linewidth}{!}{%
+    \begin{tikzpicture}[
+        font=\normalsize,
+        base/.style={draw, rounded corners, align=center, minimum height=1cm, inner sep=6pt},
+        process/.style={base, fill=blue!5, minimum width=3cm},
+        decision/.style={base, fill=yellow!10, minimum width=3cm},
+        stop/.style={base, fill=gray!15, very thick, minimum width=3cm},
+        arrow/.style={-{Stealth[length=3mm]}, thick},
+        lbl/.style={font=\small, fill=white, inner sep=1.5pt},
+        group/.style={draw, dashed, rounded corners, gray},
+        grouplbl/.style={font=\small\itshape, anchor=north west, gray!70!black}
+    ]
+        \draw[group] (-8.3,-1.3) rectangle (2.3,-6.0);
+        \node[grouplbl] at (-8.2,-1.35) {\texttt{A2ARequestHandler} / SDK};
+        \draw[group] (-6.6,-6.5) rectangle (6.6,-11.0);
+        \node[grouplbl] at (-6.5,-6.55) {\texttt{BaseExecutor.cancel}};
+        
+        \node[process]  (start) at (0,0)     {\textsc{CancelTask}($task\_id$)};
+        \node[decision] (q1)    at (0,-2.6)  {Task\\memorizzato?};
+        \node[stop]     (err1)  at (-5.4,-2.6) {Solleva\\\textsc{TaskNotFoundError}};
+        \node[decision] (q2)    at (0,-4.8)  {Stato\\terminale?};
+        \node[stop]     (err2)  at (-5.4,-4.8) {Solleva\\\textsc{TaskNotCancelableError}};
+        \node[decision] (q3)    at (0,-7.6)  {$task\_id$ nel\\registro?};
+        \node[process]  (upd)   at (-3.8,-9.9) {Pubblica evento\\\textsc{Canceled}};
+        \node[process]  (canc)  at (3.8,-9.9)  {$task\_asyncio$.\textsc{Cancel}()};
+        \node[stop]     (end1)  at (-3.8,-12.3) {Fine\\(scenario 2)};
+        \node[stop]     (end2)  at (3.8,-12.3)  {Fine (scenario 1):\\\textsc{Canceled} pubblicato\\da \texttt{execute}};
+        
+        \draw[arrow] (start) -- (q1);
+        \draw[arrow] (q1) -- node[lbl]{no} (err1);
+        \draw[arrow] (q1) -- node[lbl]{sì} (q2);
+        \draw[arrow] (q2) -- node[lbl]{sì} (err2);
+        \draw[arrow] (q2) -- node[lbl, pos=0.3]{no} (q3);
+        \draw[arrow] (q3) -- node[lbl, pos=0.45]{no} (upd);
+        \draw[arrow] (q3) -- node[lbl, pos=0.45]{sì} (canc);
+        \draw[arrow] (upd) -- (end1);
+        \draw[arrow] (canc) -- (end2);
+    \end{tikzpicture}%
+    }
+    \caption{Gestione di una richiesta \texttt{CancelTask}. I controlli sull'esistenza e sullo stato del Task vengono eseguiti prima di invocare \texttt{BaseExecutor.cancel}, che distingue i due scenari in base al registro dei task in esecuzione. Dopo \texttt{BaseExecutor.cancel}, l'SDK cancella a sua volta il task di esecuzione, se è ancora attivo.}
+    \label{fig:cancel-flow}
+\end{figure}
+
+\begin{algorithm}[htbp]
+\caption{Gestione di \texttt{CancelTask}}
+\label{alg:cancel}
+\begin{algorithmic}[1]
+\Function{OnCancelTask}{$richiesta$} \Comment{\texttt{A2ARequestHandler}}
+    \State $task \gets$ \Call{OttieniStatoMemorizzato}{$richiesta.id$}
+    \If{$task$ non è definito}
+        \State Solleva \textsc{TaskNotFoundError}
+    \ElsIf{$task.stato$ è uno stato terminale}
+        \State Solleva \textsc{TaskNotCancelableError}
+    \EndIf
+    \State \Return \Call{OnCancelTaskSDK}{$richiesta$} \Comment{invoca \textsc{Cancel}, poi cancella l'esecuzione}
+\EndFunction
+\Statex
+\Function{Cancel}{$context$, $event\_queue$} \Comment{\texttt{BaseExecutor}}
+    \State $task\_id \gets context.task\_id$
+    \If{$task\_id$ è presente nel registro} \Comment{scenario 1}
+        \State $registro[task\_id].$\Call{Cancel}{}
+        \State \Return
+    \EndIf
+    \State $updater \gets$ nuovo \Call{TaskUpdater}{$event\_queue$, $task\_id$, $context.context\_id$} \Comment{scenario 2}
+    \State $updater.$\Call{Cancella}{}
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Responsabilità dello stato terminale}
+
+Per lo scenario~1 si è adottato un principio preciso, secondo cui il ciclo di vita di un Task debba essere gestito da chi ne sta eseguendo l'elaborazione. Per questo \texttt{cancel} non porta mai autonomamente in \texttt{CANCELED} un Task in esecuzione. Si limita a richiedere la cancellazione del task \texttt{asyncio} corrispondente, richiesta che, nella versione adottata, l'SDK ripete subito dopo. È \texttt{execute}, nel blocco \texttt{except} dedicato a \texttt{CancelledError} (Algoritmo~\ref{alg:execute}), a intercettare l'eccezione, pubblicare l'evento che porta il Task in \texttt{CANCELED} ed eseguire le operazioni di pulizia necessarie. Le responsabilità sono state separate in questo modo perché solo \texttt{execute}, nel punto esatto in cui l'elaborazione viene interrotta, conosce ciò che è stato effettivamente completato fino a quel momento. Un esempio è il caso in cui la cancellazione arrivi quando il grafo ha già prodotto un esito: grazie alla variabile $esito\_definito$, \texttt{execute} riconosce che l'esito è già stato determinato e non lo sovrascrive con \texttt{CANCELED}. La scelta è inoltre coerente con l'ordine delle operazioni dell'SDK descritto in precedenza. Dato che \texttt{execute} pubblica \texttt{CANCELED} prima di terminare, e quindi prima che le code di eventi vengano chiuse, anche un client in streaming riceve l'evento terminale.
+
+Per lo stesso motivo, dopo aver aggiornato lo stato del Task, il blocco \texttt{except} di \texttt{execute} deve rilanciare \texttt{CancelledError}. Se l'eccezione venisse soppressa, il task \texttt{asyncio} risulterebbe terminato normalmente e non cancellato. Lo stato applicativo del Task sarebbe correttamente \texttt{CANCELED}, mentre per l'event loop il task si sarebbe concluso con successo, e i meccanismi di \texttt{asyncio} che si basano sulla corretta propagazione della cancellazione non funzionerebbero come previsto \cite{pythonasynciotask}.
+
+Il comportamento descritto resta corretto finché i controlli di \texttt{cancel} e le transizioni di \texttt{execute} non si sovrappongono nel tempo. Il caso in cui la cancellazione arriva mentre \texttt{execute} sta pubblicando l'esito dell'elaborazione è più delicato e viene analizzato nella Sezione~\ref{sec:cancel-streaming}.
+
+\FloatBarrier
+
+% =====================================================================
+\section{Interazione tra \texorpdfstring{\texttt{cancel}}{cancel} e streaming}
+\label{sec:cancel-streaming}
+
+Come anticipato nella Sezione~\ref{sec:cancel}, \texttt{cancel} ed \texttt{execute} vengono eseguite come coroutine distinte sullo stesso event loop. In \texttt{asyncio} l'esecuzione è concorrente ma non parallela, cioè in ogni istante è attiva al massimo una coroutine, e il controllo passa da una all'altra solo nei punti di sospensione, ovvero quando la coroutine in esecuzione resta in attesa di un'operazione tramite \texttt{await} \cite{pythonasynciotask}. Da questo modello derivano due proprietà su cui si basa l'intera analisi di questa sezione. La prima è che una sequenza di istruzioni senza punti di sospensione viene eseguita senza interruzioni, e si può quindi considerare atomica rispetto alle altre coroutine. La seconda è che ogni \texttt{await} che sospende davvero la coroutine è un punto in cui \texttt{cancel} può intervenire e in cui, per effetto della cancellazione cooperativa, può essere sollevata \texttt{CancelledError}.
+
+\subsection{La finestra critica}
+
+La variabile $esito\_definito$ introdotta nell'Algoritmo~\ref{alg:execute} evita che una cancellazione tardiva sovrascriva con \texttt{CANCELED} un esito già prodotto dal grafo, ma non garantisce che quell'esito venga davvero pubblicato. C'è infatti una finestra temporale che si apre quando $esito\_definito$ viene impostata a \textbf{vero} e si chiude solo quando la pubblicazione dell'esito sulla \texttt{EventQueue} è terminata, cioè alla fine di \textsc{AggiungiArtifact} e \textsc{Completa}, oppure di \textsc{RichiediInput}.
+
+Queste operazioni non sono istantanee. Il \texttt{TaskUpdater} serializza gli aggiornamenti di stato con un lock, e pubblicare un evento significa inserirlo in una coda \texttt{asyncio} di capacità limitata \cite{a2apythonsdk}. La coroutine viene quindi sospesa se il lock è già occupato o se la coda è piena. In condizioni ordinarie la finestra è molto stretta, ma non nulla. Se \texttt{cancel} interviene in quel momento, \texttt{CancelledError} viene sollevata durante la pubblicazione, che si interrompe prima che l'evento venga accodato. Il blocco \texttt{except} di \texttt{execute} trova $esito\_definito$ a \textbf{vero}, quindi correttamente non pubblica \texttt{CANCELED}, rilancia l'eccezione ed \texttt{execute} termina. A questo punto l'SDK chiude le code di eventi del Task, e ogni evento inserito dopo viene scartato \cite{a2apythonsdk}.
+
+Il risultato prodotto dal grafo viene quindi perso. Il client in streaming vede lo stream chiudersi senza aver ricevuto nessun evento terminale o di interruzione, al contrario di quanto descritto nella Sezione~\ref{sec:execute}. Inoltre il framework, trovando il Task in uno stato non terminale, imposta lo stato memorizzato a \texttt{CANCELED} (Sezione~\ref{sec:cancel}). Il Task risulta così cancellato anche se la richiesta di cancellazione è arrivata quando l'elaborazione aveva già prodotto un esito, e questo viola il requisito RF10. Il problema è stato riprodotto sperimentalmente allargando artificialmente la finestra critica. Senza protezione, il client riceve gli eventi \texttt{SUBMITTED} e \texttt{WORKING}, poi lo stream si chiude e il Task risulta memorizzato come \texttt{CANCELED}.
+
+\subsection{Protezione della pubblicazione con \texorpdfstring{\texttt{asyncio.shield}}{asyncio.shield}}
+
+Per chiudere questa finestra si è utilizzata \texttt{asyncio.shield}, una funzione che protegge un'operazione asincrona dalla cancellazione di chi la sta attendendo. Il suo comportamento, tuttavia, non corrisponde del tutto a quanto suggerisce il nome. L'operazione passata a \texttt{shield} viene eseguita in un task \texttt{asyncio} separato. Se la coroutine che la sta attendendo viene cancellata, quel task continua senza essere interrotto, ma l'espressione \texttt{await shield(\ldots)} solleva comunque \texttt{CancelledError} nel chiamante, immediatamente e non quando l'operazione protetta è terminata \cite{pythonasynciotask}.
+
+Per questo \texttt{shield} da solo non basta. \texttt{execute} riceverebbe subito \texttt{CancelledError}, eseguirebbe il blocco \texttt{finally} e terminerebbe mentre la pubblicazione è ancora in corso. L'SDK chiuderebbe allora le code, e la pubblicazione, terminando dopo, potrebbe trovarle già chiuse. In quel caso l'evento verrebbe scartato, riproducendo il problema di partenza.
+
+La soluzione adottata, riportata nell'Algoritmo~\ref{alg:finalizzazione}, unisce quindi \texttt{shield} a un'attesa esplicita, entrambe raccolte in un'unica funzione, \textsc{PubblicaProtetto}. La funzione esegue la pubblicazione in un task \texttt{asyncio} dedicato e ne conserva un riferimento per tutto il tempo dell'attesa, come raccomanda la documentazione di \texttt{asyncio}, perché un task non più referenziato può essere eliminato dal garbage collector prima di terminare \cite{pythonasynciotask}. Il task viene poi atteso tramite \texttt{shield} dentro un ciclo. Se l'attesa viene interrotta da una cancellazione, la funzione ne prende nota e riprende ad attendere, finché la pubblicazione non è conclusa. Solo a quel punto solleva \texttt{CancelledError}, così che la cancellazione venga propagata come richiesto nella Sezione~\ref{sec:cancel}. Il ciclo serve perché una singola attesa protetta verrebbe interrotta a sua volta da un'altra cancellazione, mentre un'attesa non protetta passerebbe la cancellazione al task di pubblicazione, interrompendolo \cite{pythonasynciotask}.
+
+Quando il grafo produce un esito, \texttt{execute} imposta $esito\_definito$ e chiama \textsc{PubblicaProtetto} sulla funzione \textsc{Finalizza}, che pubblica l'esito. Tra l'assegnazione di $esito\_definito$ e la creazione del task di pubblicazione non ci sono punti di sospensione, quindi \texttt{CancelledError} non può essere sollevata in mezzo alle due operazioni. Di conseguenza, ogni volta che $esito\_definito$ vale \textbf{vero}, la pubblicazione dell'esito è già partita e verrà completata. La stessa funzione viene usata anche per pubblicare \texttt{CANCELED} e \texttt{FAILED} nei blocchi \texttt{except}. Se infatti arriva una seconda richiesta \texttt{CancelTask} mentre \texttt{execute} sta pubblicando \texttt{CANCELED}, il Task è ancora non terminale e ancora nel registro, e la richiesta raggiunge di nuovo il task di esecuzione. Senza protezione, la nuova \texttt{CancelledError} interromperebbe la pubblicazione in corso. Sperimentalmente, in questo caso il client in streaming non riceve l'evento \texttt{CANCELED} se la pubblicazione non è protetta, mentre lo riceve regolarmente usando \textsc{PubblicaProtetto}.
+
+\begin{algorithm}[htbp]
+\caption{Finalizzazione protetta dell'esito in \texttt{execute}}
+\label{alg:finalizzazione}
+\begin{algorithmic}[1]
+\Function{PubblicaProtetto}{$operazione$}
+    \State $pubblicazione \gets$ nuovo task \texttt{asyncio}($operazione$)
+    \State $cancellato \gets$ \textbf{falso}
+    \While{$pubblicazione$ non è conclusa}
+        \Try
+            \State \textbf{await} \texttt{shield}($pubblicazione$)
+        \Catch{\textsc{CancelledError}}
+            \State $cancellato \gets$ \textbf{vero} \Comment{si attende comunque la fine}
+        \EndTry
+    \EndWhile
+    \If{$cancellato$}
+        \State Solleva \textsc{CancelledError}
+    \EndIf
+\EndFunction
+\Statex
+\Function{Finalizza}{$updater$, $step$}
+    \If{$step$ indica task completato}
+        \State $updater.$\Call{AggiungiArtifact}{$step.risultato$}
+        \State $updater.$\Call{Completa}{}
+    \Else
+        \State $updater.$\Call{RichiediInput}{$step.messaggio$}
+    \EndIf
+\EndFunction
+\Statex
+\Statex \textit{Nel ciclo di} \textsc{Execute}\textit{, al posto dei rami di completamento e di richiesta di input:}
+\If{$step$ indica task completato \textbf{oppure} richiede input utente}
+    \State $esito\_definito \gets$ \textbf{vero}
+    \State \Call{PubblicaProtetto}{\textsc{Finalizza}($updater$, $step$)}
+    \State \textbf{break}
+\EndIf
+\Statex
+\Statex \textit{Nel blocco} \texttt{except} \textsc{CancelledError} \textit{di} \textsc{Execute} \textit{(analogamente, con} \textsc{Fallito}\textit{, nel blocco} \texttt{except} \textsc{Exception}\textit{):}
+\If{\textbf{non} $esito\_definito$}
+    \State \Call{PubblicaProtetto}{$updater.$\textsc{Cancella}()}
+\EndIf
+\State rilancia l'eccezione
+\end{algorithmic}
+\end{algorithm}
+
+La protezione riguarda solo la pubblicazione degli stati, non tutta l'esecuzione di \texttt{execute}. Finché il grafo non ha prodotto un esito, una richiesta di cancellazione continua a interrompere l'elaborazione esattamente come descritto nella Sezione~\ref{sec:cancel}. Inoltre la finestra protetta ha una durata molto breve, perché comprende solo l'accodamento di uno o due eventi, quindi il ritardo che può introdurre nella gestione di una cancellazione è trascurabile.
+
+La Figura~\ref{fig:race-timeline} mostra la sequenza del caso critico. La richiesta di cancellazione raggiunge \texttt{execute} mentre questa attende la pubblicazione dell'esito. \texttt{CancelledError} viene sollevata subito nel chiamante, ma il task di pubblicazione prosegue senza essere interrotto e accoda l'evento. \textsc{PubblicaProtetto} attende il completamento di tale task e solo dopo solleva \texttt{CancelledError}. Il blocco \texttt{except} trova $esito\_definito$ a \textbf{vero} e non pubblica \texttt{CANCELED}, poi \texttt{execute} rimuove il task dal registro e termina, quando l'evento è ormai già stato accodato.
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{\linewidth}{!}{%
+    \begin{tikzpicture}[
+        event/.style={draw, rounded corners, fill=blue!5, text width=3.7cm, minimum height=1.1cm, align=center, font=\normalsize},
+        critical/.style={event, fill=red!10},
+        stop/.style={event, fill=gray!15, very thick},
+        arrow/.style={-{Stealth[length=3mm]}, thick},
+        lbl/.style={font=\small, align=center},
+        lane/.style={font=\normalsize}
+    ]
+        \node[lane] at (-5,1.6) {\texttt{cancel}};
+        \node[lane] at (0,1.6)  {\texttt{execute}};
+        \node[lane] at (5,1.6)  {task di pubblicazione};
+        \draw[gray!50, dashed] (-2.5,2) -- (-2.5,-10.2);
+        \draw[gray!50, dashed] (2.5,2) -- (2.5,-10.2);
+
+        \node[event]    (e1) at (0,0)    {il grafo produce\\un esito};
+        \node[event]    (e2) at (0,-2.2) {$esito\_definito \gets$ vero;\\\textsc{PubblicaProtetto}};
+        \node[critical] (e3) at (0,-4.4) {\textbf{await}\\\texttt{shield}($pubblicazione$)};
+        \node[critical] (e4) at (0,-7.2) {attende la fine della pubblicazione, poi rilancia};
+        \node[stop]     (e5) at (0,-9.4) {\texttt{except}: nessun \textsc{Canceled};\\\texttt{finally}: registro};
+
+        \draw[arrow] (e1) -- (e2);
+        \draw[arrow] (e2) -- (e3);
+        \draw[arrow] (e3) -- node[lbl, left=3pt]{\texttt{CancelledError}\\immediata} (e4);
+        \draw[arrow] (e4) -- node[lbl, left=3pt]{\texttt{CancelledError}} (e5);
+
+        \node[critical] (p1) at (5,-4.4) {accodamento\\dell'esito in corso};
+        \node[event]    (p2) at (5,-7.2) {evento accodato sulla \texttt{EventQueue}};
+        \draw[arrow, dashed] (e2.east) -| node[lbl, pos=0.25, above]{avvia} (p1.north);
+        \draw[arrow] (p1) -- node[lbl, right=3pt]{non\\interrotto} (p2);
+        \draw[arrow, dashed] (p2) -- (e4);
+
+        \node[event] (c1) at (-5,-4.4) {$task\_asyncio$.\\\textsc{Cancel}()};
+        \draw[arrow, dashed] (c1) -- (e3);
+
+        \draw[decorate, decoration={brace, amplitude=8pt}, thick] (7.2,-3.6) -- (7.2,-8.0)
+            node[midway, right=12pt, lbl, text width=2.6cm, align=left]{finestra protetta: la cancellazione non impedisce l'accodamento dell'esito};
+    \end{tikzpicture}%
+    }
+    \caption{Sequenza del caso critico, in cui una richiesta di cancellazione raggiunge \texttt{execute} durante la pubblicazione dell'esito. \texttt{shield} impedisce che la cancellazione interrompa il task di pubblicazione, e l'attesa ripetuta in \textsc{PubblicaProtetto} fa sì che \texttt{execute} termini solo dopo che l'evento è stato accodato.}
+    \label{fig:race-timeline}
+\end{figure}
+
+Con questa soluzione, una cancellazione che arriva dopo che il grafo ha prodotto un esito non ha più effetto su quell'esito. L'evento corrispondente viene sempre accodato prima che \texttt{execute} termini, e quindi prima che le code vengano chiuse. Il client riceve l'esito in entrambe le modalità, come ultimo evento dello stream con \texttt{SendStreamingMessage} e come risposta con \texttt{SendMessage}. Le conseguenze sullo stato del Task dipendono dal tipo di esito. Se l'esito è il completamento, il Task resta \texttt{COMPLETED} e la richiesta di cancellazione lo restituisce in quello stato, poiché, con una cancellazione cooperativa, un lavoro già concluso non viene annullato. Se invece l'esito è una richiesta di input, il Task non è terminale, quindi quando \texttt{execute} termina la cancellazione si applica al Task in attesa, che passa a \texttt{CANCELED} come previsto dal requisito RF4. In questo caso lo stato \texttt{CANCELED} viene scritto dal framework solo nello stato memorizzato e non arriva sullo stream, che si è già chiuso con l'evento \texttt{INPUT\_REQUIRED}. Il requisito RF10 è quindi soddisfatto per tutte le cancellazioni che raggiungono un'esecuzione attiva, e il comportamento è stato verificato sperimentalmente nello stesso scenario usato per riprodurre il problema.
+
+\subsection{Limiti della soluzione}
+
+La protezione descritta vale per le cancellazioni che raggiungono \texttt{execute} mentre questa è ancora presente nel registro. Resta però un'altra finestra, che non dipende dalla logica di \texttt{execute} ma dal fatto che la pubblicazione di un evento e il suo effetto sullo stato memorizzato sono separati, e il secondo è gestito dal framework. Nella versione adottata, l'SDK considera concluso un Task solo dopo averne elaborato l'evento terminale \cite{a2apythonsdk}. Se una richiesta di cancellazione arriva dopo che \texttt{execute} si è rimossa dal registro, ma prima che l'SDK abbia elaborato l'esito appena pubblicato, sia il controllo di \texttt{A2ARequestHandler} sia \texttt{BaseExecutor.cancel} osservano un Task non terminale e senza esecuzione attiva. La richiesta ricade quindi nello scenario~2, e l'evento \texttt{CANCELED} può essere pubblicato dopo l'esito.
+
+Dato che sia la lettura sia l'aggiornamento dello stato memorizzato avvengono fuori dall'\texttt{AgentExecutor}, questa finestra non si può chiudere modificando solo \texttt{execute} e \texttt{cancel}. Per una soluzione completa servirebbe un aggiornamento condizionato dello stato memorizzato, che rifiuti qualsiasi transizione a partire da uno stato terminale. Tale estensione riguarda lo strato di persistenza del framework, pertanto esula dagli obiettivi di questo lavoro e ne costituisce un possibile sviluppo futuro.
+
+\FloatBarrier

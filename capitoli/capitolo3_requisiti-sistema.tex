@@ -1,0 +1,78 @@
+\label{cap:requisiti}
+
+Questo capitolo definisce il problema affrontato nel tirocinio e i requisiti che la soluzione deve soddisfare, costituendo il riferimento per le scelte progettuali discusse nel Capitolo~\ref{cap:progettazione}. La Sezione~\ref{sec:scopo} descrive il contesto aziendale, l'obiettivo del lavoro e l'aggiornamento del protocollo A2A che lo ha accompagnato. La Sezione~\ref{sec:vincoli} elenca i vincoli, tecnici e organizzativi, entro cui la soluzione è stata sviluppata. La Sezione~\ref{sec:framework} motiva la scelta del framework utilizzato per la costruzione degli agenti. La Sezione~\ref{sec:requisiti} formalizza infine i requisiti funzionali e non funzionali.
+
+\section{Scopo e obiettivi del sistema}
+\label{sec:scopo}
+
+Il tirocinio si è svolto presso HCL Software, in un contesto in cui gli utenti possono creare agenti AI personalizzati e metterli in comunicazione con altri agenti attraverso il protocollo A2A. Poiché ciascun agente implementa una propria logica applicativa, la gestione del ciclo di vita dei Task non può dipendere da essa: ogni agente deve saper seguire un Task dalla ricezione della richiesta, attraverso le eventuali pause in attesa di input, fino al raggiungimento di uno stato terminale, come il completamento, il fallimento o la cancellazione.
+
+L'obiettivo principale del tirocinio era realizzare una gestione della funzionalità di cancellazione (\texttt{cancel}) di un Task applicabile a qualsiasi agente realizzato dagli utenti. Data la stretta relazione tra la gestione della cancellazione e quella dell'esecuzione di un Task -- entrambe implementate come metodi della medesima classe Python \texttt{AgentExecutor} -- tale obiettivo ha richiesto necessariamente anche uno studio approfondito e una revisione della funzionalità di esecuzione (\texttt{execute}) già esistente.
+
+Durante il tirocinio si è reso inoltre necessario aggiornare il codice aziendale, ancora basato sulla versione 0.3 del protocollo A2A, alla versione 1.0. Il passaggio ha permesso di adottare la serie 1.1 dell'SDK Python ufficiale e open source (\texttt{a2a-sdk}) \cite{a2apythonchangelog}: a essa fanno riferimento l'implementazione e le verifiche descritte in questa tesi, condotte con la versione 1.1.5. L'aggiornamento ha introdotto diverse modifiche non retrocompatibili rispetto alla versione 0.3. Tra le più rilevanti per il lavoro svolto figurano la ridefinizione dei nomi dei metodi invocati nelle richieste JSON-RPC, allineati alla convenzione di denominazione di gRPC (ad esempio, \texttt{message/send} è diventato \texttt{SendMessage} e \texttt{tasks/cancel} è diventato \texttt{CancelTask}), l'unificazione delle tipologie di contenuto (\texttt{TextPart}, \texttt{FilePart}, \texttt{DataPart}) in un'unica struttura \texttt{Part} e una revisione della struttura dell'Agent Card \cite{a2awhatsnew}. Per non interrompere la compatibilità con i client esistenti, l'SDK consente di esporre l'endpoint JSON-RPC accettando anche i nomi dei metodi della versione 0.3 \cite{a2apythonsdk}; questa modalità è stata abilitata nel server.
+
+In sintesi, il sistema doveva essere in grado di gestire correttamente la cancellazione di un Task in entrambe le modalità di invocazione previste dal protocollo, sincrona (\texttt{SendMessage}) e in streaming (\texttt{SendStreamingMessage}), garantendo in entrambi i casi un comportamento coerente e uno stato finale del Task univocamente determinato.
+
+\section{Vincoli}
+\label{sec:vincoli}
+
+\begin{itemize}
+    \item \textbf{Perimetro di intervento}: le classi relative alla logica interna degli agenti basata su LangGraph non dovevano essere modificate, in quanto già esistenti e già testate. Anche se l'aggiornamento alla nuova versione del protocollo ha comportato la modifica di diverse classi correlate all'SDK A2A, questa tesi si concentra esclusivamente sulla classe \texttt{AgentExecutor} e sulla porzione di server responsabile dell'esposizione dell'endpoint del protocollo A2A, in quanto componenti centrali per la gestione del ciclo di vita dei Task.
+    \item \textbf{Vincoli temporali}: il tirocinio aveva una durata massima di tre mesi.
+    \item \textbf{Linguaggio e framework della base di codice esistente}: Python e LangGraph, già adottati internamente dall'azienda per la costruzione degli agenti.
+    \item \textbf{Utilizzo dell'SDK ufficiale del protocollo A2A}: su indicazione del tutor aziendale, la gestione dei Task doveva basarsi sull'SDK Python ufficiale del protocollo (\texttt{a2a-sdk}), anziché su uno sviluppo autonomo a partire dalla sola specifica.
+    \item \textbf{Gestione dell'ambiente Python}: su indicazione del tutor aziendale, per la gestione dei pacchetti e degli ambienti virtuali è stato utilizzato UV, al fine di evitare di alterare la configurazione Python del sistema locale.
+    \item \textbf{Modello di concorrenza}: l'interfaccia \texttt{AgentExecutor} dell'SDK ufficiale definisce \texttt{execute} e \texttt{cancel} come metodi asincroni (\texttt{async def}) \cite{a2apythondocs}. Il framework esegue ogni Task all'interno di un task \texttt{asyncio} dedicato e, alla ricezione di una richiesta di cancellazione, invoca \texttt{cancel} e successivamente cancella tale task \cite{a2apythonsdk}; quali compiti restino, di conseguenza, all'\texttt{AgentExecutor} è discusso nella Sezione~\ref{sec:cancel}. L'uso di \texttt{asyncio} non è stato pertanto oggetto di una scelta autonoma, ma un vincolo diretto dell'interfaccia da implementare.
+    \item \textbf{Metodo unico per l'esecuzione}: l'interfaccia \texttt{AgentExecutor} definisce \texttt{execute} come un unico metodo, invocato dal framework indipendentemente dalla modalità di invocazione richiesta dal client, sincrona o in streaming \cite{a2apythondocs}. La distinzione tra le due modalità non può pertanto essere gestita tramite due implementazioni separate a livello di interfaccia.
+\end{itemize}
+
+Nel rispetto di questi vincoli, la soluzione è stata sviluppata e verificata in un progetto di test indipendente dal codice aziendale, composto da due agenti di esempio e da una classe \texttt{BaseExecutor} comune, che implementa l'interfaccia \texttt{AgentExecutor} senza dipendere dalla logica specifica dei singoli agenti.
+
+Non sono stati imposti vincoli relativi allo stile di scrittura del codice o all'adozione di pattern architetturali predefiniti: le scelte progettuali discusse nel Capitolo~\ref{cap:progettazione} sono state pertanto decisioni autonome, motivate dalle esigenze specifiche del sistema.
+
+\section{Scelta del framework per gli agenti}
+\label{sec:framework}
+
+Nella fase iniziale del tirocinio è stato realizzato un agente di prova, con lo scopo di acquisire familiarità con gli strumenti impiegati nel codice aziendale. In questa fase il tutor aziendale ha lasciato libertà di scelta tra due framework per lo sviluppo dell'agente: LangChain e LangGraph. La documentazione ufficiale li distingue per livello di astrazione: LangChain offre, tramite la funzione \texttt{create\_agent}, un'interfaccia di alto livello e facilmente personalizzabile per la costruzione di agenti, mentre LangGraph è un framework di orchestrazione di basso livello, destinato ai casi che richiedono un controllo esplicito sul flusso di esecuzione \cite{langchainoverview}. In LangGraph l'agente è rappresentato tramite un grafo, in cui ogni nodo corrisponde a un passo computazionale e lo stato condiviso è definito in modo tipizzato dallo sviluppatore \cite{langgraphgithub}.
+
+Per l'agente di prova si è scelto inizialmente di utilizzare direttamente LangGraph, principalmente per l'esplicitezza con cui consente di definire e osservare lo stato e il flusso di esecuzione. L'utilizzo di LangGraph risultava particolarmente adatto all'oggetto del tirocinio: la gestione del ciclo di vita di un Task e la sua eventuale interruzione richiedono di poter individuare con precisione in quale punto dell'esecuzione ci si trovi in un dato istante, informazione che un grafo con stato esplicito, eseguito nodo per nodo, rende immediatamente disponibile.
+
+Successivamente, una volta consolidati questi concetti, gli agenti di esempio del progetto di test sono stati costruiti con \texttt{create\_agent} di LangChain, più rapida da configurare. La scelta non modifica il modello di esecuzione: \texttt{create\_agent} è costruita su LangGraph \cite{langchainv1} e produce quindi un grafo che viene eseguito e osservato nodo per nodo esattamente come un grafo definito manualmente.
+
+\section{Requisiti funzionali e non funzionali}
+\label{sec:requisiti}
+
+Per consentirne il riferimento puntuale nei capitoli successivi, a ciascun requisito è associato un identificativo: RF per i requisiti funzionali, RNF per quelli non funzionali.
+
+\subsection{Requisiti funzionali}
+
+\begin{description}
+    \item[RF1] Il server deve esporre un unico endpoint JSON-RPC attraverso il quale il client possa inviare un messaggio, in modalità sincrona (\texttt{SendMessage}) o in streaming (\texttt{SendStreamingMessage}), e richiedere la cancellazione di un Task (\texttt{CancelTask}).
+
+    \item[RF2] Nella modalità streaming, il client deve ricevere una sequenza ordinata di eventi (\texttt{TaskStatusUpdateEvent}, \texttt{TaskArtifactUpdateEvent}) che rifletta l'avanzamento del Task fino al raggiungimento di uno stato terminale o interrotto (ad esempio, \texttt{TASK\_STATE\_INPUT\_REQUIRED}) \cite{a2aspec}.
+
+    \item[RF3] Una richiesta di cancellazione relativa a un Task in esecuzione deve interromperne l'elaborazione, così da non consumare ulteriori risorse computazionali, e portare il Task nello stato terminale \texttt{TASK\_STATE\_CANCELED}. In caso di comunicazione in streaming, il client deve ricevere tutti gli eventi di avanzamento pubblicati prima della cancellazione, seguiti dall'evento che porta il Task in \texttt{TASK\_STATE\_CANCELED}.
+
+    \item[RF4] Una richiesta di cancellazione relativa a un Task non ancora giunto in uno stato terminale, ma attualmente non in esecuzione (tipicamente un Task in \texttt{TASK\_STATE\_INPUT\_REQUIRED}, in attesa di un nuovo messaggio dell'utente), deve portare il Task direttamente nello stato \texttt{TASK\_STATE\_CANCELED}.
+
+    \item[RF5] Una richiesta di cancellazione relativa a un Task che ha già raggiunto uno stato terminale (\texttt{TASK\_STATE\_COMPLETED}, \texttt{TASK\_STATE\_FAILED}, \texttt{TASK\_STATE\_CANCELED}, \texttt{TASK\_STATE\_REJECTED}) deve essere rifiutata con un errore esplicito (\texttt{TaskNotCancelableError}), anziché essere ignorata silenziosamente \cite{a2aspec}.
+
+    \item[RF6] Una richiesta di cancellazione o di invio di un nuovo messaggio riferita a un Task inesistente deve essere rifiutata con un errore specifico (\texttt{TaskNotFoundError}) \cite{a2aspec}.
+
+    \item[RF7] Un Task giunto in uno stato terminale non deve accettare ulteriori messaggi: l'invio di un nuovo messaggio verso un Task in questo stato deve essere rifiutato con un errore specifico (\texttt{UnsupportedOperationError}) \cite{a2aspec}.
+
+    \item[RF8] Più richieste di cancellazione relative allo stesso Task non devono alterarne lo stato oltre la prima: il Task resta in \texttt{TASK\_STATE\_CANCELED}, e le richieste successive vengono rifiutate secondo quanto previsto da RF5.
+
+    \item[RF9] Il sistema deve gestire l'esecuzione concorrente di più Task, mantenendo per ciascuno una gestione indipendente del proprio stato e del proprio ciclo di vita.
+
+    \item[RF10] Una richiesta di cancellazione che raggiunge un Task in esecuzione quando l'elaborazione ha già prodotto un esito non deve impedirne la consegna al client. Se l'esito è terminale, la richiesta non deve sovrascriverlo e lo stato finale notificato al client deve coincidere con quello memorizzato dal sistema; se l'esito è invece una richiesta di ulteriori input, il Task deve rimanere cancellabile secondo quanto previsto da RF4.
+\end{description}
+
+\subsection{Requisiti non funzionali}
+
+\begin{description}
+    \item[RNF1 -- Genericità] La gestione del ciclo di vita dei Task deve poter essere applicata, con modifiche minime, a qualsiasi agente personalizzato realizzato dagli utenti dell'azienda, prescindendo dalla specifica logica applicativa del singolo agente.
+    \item[RNF2 -- Testabilità] La logica di \texttt{execute} e \texttt{cancel} deve poter essere verificata in modo automatico, tramite test che esercitino il gestore delle richieste dell'SDK, e in modo manuale, tramite chiamate HTTP dirette verso l'endpoint esposto dal server.
+\end{description}
+
+Non sono stati formalizzati requisiti relativi ad altre proprietà non funzionali tradizionali, quali sicurezza, robustezza a input malformati o osservabilità, in quanto estranee al perimetro del tirocinio, incentrato sulla correttezza del ciclo di vita dei Task.
