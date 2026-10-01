@@ -7,15 +7,17 @@ finalname = Tesi
 included_latex_sources = \
 	ringraziamenti.tex \
 	introduzione.tex \
-	esempio-capitolo-1.tex \
-	esempio-capitolo-2.tex \
+	capitoli/capitolo1_llm-e-agenti.tex \
+	capitoli/capitolo2_protocollo-a2a.tex \
+	capitoli/capitolo3_requisiti-sistema.tex \
+	capitoli/capitolo4_progettazione.tex \
+	capitoli/capitolo5_implementazione.tex \
+	capitoli/capitolo6_validazione-testing.tex \
 	conclusioni.tex
 
 # lista qui le figure che ti servono 
 pdffiles = \
-	figure/uniroma3-logo.pdf \
-	figure/esempio-figura-1.pdf \
-	figure/esempio-figura-2.pdf
+	figure/uniroma3-logo.pdf
 
 $(finalname): $(included_latex_sources) $(pdffiles) $(finalname).tex
 	pdflatex $(finalname).tex
@@ -62,9 +64,9 @@ index:
 	latex $(finalname).tex
 
 bib:
-	latex $(finalname).tex
+	pdflatex $(finalname).tex
 	bibtex $(finalname)
-	latex $(finalname).tex
-	latex $(finalname).tex
+	pdflatex $(finalname).tex
+	pdflatex $(finalname).tex
 
 

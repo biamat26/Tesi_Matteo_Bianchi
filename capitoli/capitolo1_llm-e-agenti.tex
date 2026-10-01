@@ -94,6 +94,7 @@ Per distinguere questi modelli di dimensioni estremamente elevate dai PLM più p
 
 
 \section{Dal modello di linguaggio al ragionamento e all'azione}
+\label{sec:ragionamento-azione}
 
 
 Le abilità emergenti descritte nella sezione precedente non alterano la natura fondamentale degli LLM: essi restano modelli statistici addestrati a generare, token dopo token, la continuazione più probabile di una sequenza in input e operano esclusivamente all'interno della propria finestra di contesto. Da questa caratteristica derivano due limiti strutturali:
@@ -185,7 +186,7 @@ dove $c_t$ è il $t$-esimo token della catena e $c_{<t}$ i token che lo precedon
 
 Con il \emph{prompting} standard, il modello restituisce direttamente 27, anziché il valore corretto 9: poiché la risposta è priva di passaggi intermedi, è impossibile stabilire come il modello sia giunto a questa conclusione o in quale punto abbia sbagliato. Con il prompting Chain-of-Thought, invece, il modello scompone il problema nei passaggi necessari, calcolando dapprima la sottrazione delle mele utilizzate ($23 - 20 = 3$) e successivamente l'aggiunta di quelle acquistate ($3 + 6 = 9$), e giunge così alla soluzione corretta.
 
-Infine, \emph{Chain-of-Thought offre una fondamentale forma di interpretabilità: rendendo esplicito il percorso deduttivo che ha condotto alla risposta, consente di individuare con precisione il punto in cui si è eventualmente verificato un errore, a differenza di quanto accade nel caso del \emph{prompting} standard illustrato in Figura~\ref{fig:cot-esempio}
+Infine, \emph{Chain-of-Thought} offre una fondamentale forma di interpretabilità: rendendo esplicito il percorso deduttivo che ha condotto alla risposta, consente di individuare con precisione il punto in cui si è eventualmente verificato un errore, a differenza di quanto accade nel caso del \emph{prompting} standard illustrato in Figura~\ref{fig:cot-esempio}.
 
 
 \subsubsection{Perché il ragionamento esplicito funziona}
@@ -338,8 +339,9 @@ Oggi l'uso di strumenti non richiede più una procedura di questo tipo: i modell
 Gli stessi autori individuano alcuni limiti del metodo \cite{schick2023toolformer}. Il principale è che le chiamate sono \emph{isolate}: poiché i dati di addestramento vengono generati indipendentemente per ciascuno strumento, il modello non impara a concatenare più strumenti, utilizzando il risultato di uno come input per un altro. Inoltre, le chiamate non sono \emph{interattive}: il modello invia una richiesta e ne riceve il risultato, ma non può, ad esempio, esaminare i risultati di una ricerca e riformulare la domanda se non sono soddisfacenti. Infine, la decisione di invocare uno strumento resta implicita: il modello non esplicita perché una chiamata sia necessaria né come il suo risultato debba essere utilizzato.
 
 Chain-of-Thought e Toolformer affrontano quindi i due limiti degli LLM separatamente: il primo fornisce un ragionamento esplicito ma chiuso sulla conoscenza del modello, il secondo un accesso all'esterno privo di un ragionamento esplicito che lo guidi. Per affrontare compiti in cui è necessario raccogliere informazioni in più passaggi, decidendo di volta in volta quale sia il passo successivo sulla base di quanto osservato, occorre unire le due capacità in un unico ciclo.
-\subsection{L'unione di ragionemanto e azione: ReAct}
+\subsection{L'unione di ragionamento e azione: ReAct}
 
 
 \section{Definizione di Agent e componenti tipici}
+\label{sec:definizione-agent}
 Definisco cos'è un agente, quali componenti lo definiscono  
