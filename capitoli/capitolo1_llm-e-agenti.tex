@@ -1,24 +1,25 @@
 \label{cap:llm-agent}
 
+
 \begin{quote}
 \textit{I limiti del mio linguaggio significano i limiti del mio mondo.} \\
 \hfill --- Ludwig Wittgenstein, \textit{Tractatus logico-philosophicus}, 5.6
 \end{quote}
 
-Nel linguaggio comune si tende spesso a usare i termini Large Language Model (LLM) e Agente AI come sinonimi; in realtà, essi esprimono due concetti profondamente diversi. Questo capitolo si propone di chiarire tale distinzione, ripercorrendo il percorso che ha condotto dai primi modelli di linguaggio agli agenti basati su LLM. La prima sezione descrive l'evoluzione dei modelli di linguaggio, dai modelli statistici fino agli LLM. La Sezione~\ref{sec:ragionamento-azione} ne individua i limiti e presenta i contributi che li hanno progressivamente superati, consentendo ai modelli di ragionare in modo esplicito e di agire attraverso strumenti esterni. La Sezione~\ref{sec:definizione-agent} definisce infine il concetto di agente e i componenti che lo caratterizzano.
+Nel linguaggio comune i termini Large Language Model (LLM) e agente AI vengono spesso utilizzati come sinonimi, nonostante essi esprimano 
+due concetti estremamente diversi. Questo capitolo ricostruisce il percorso che ha portato dai primi modelli di linguaggio agli agenti basati 
+su LLM. La Sezione~\ref{sec:cos-e-un-llm} descrive l'evoluzione dei modelli di linguaggio, dai modelli statistici agli LLM. 
+La Sezione~\ref{sec:ragionamento-azione} ne discute i limiti e i lavori che hanno permesso ai modelli di ragionare in modo esplicito e 
+di agire tramite strumenti esterni. La Sezione~\ref{sec:definizione-agent} definisce infine il concetto di agente e i suoi componenti.
 
 \section{Cos'è un Large Language Model}
+\label{sec:cos-e-un-llm}
 
-Il linguaggio è la capacità che permette all'essere umano di esprimere e condividere i propri pensieri. Un'idea, finché rimane nella mente di un individuo, resta in uno stato indefinito, che prende forma solo quando si trovano le parole per descriverla. Il linguaggio è dunque il mezzo attraverso cui l'uomo comunica e, in una certa misura, percepisce il mondo che lo circonda.
-
-Riprodurre questa capacità nelle macchine è stato per decenni uno degli obiettivi più ambiziosi dell'intelligenza artificiale. Seguendo la classificazione proposta da Zhao et al.\ \cite{zhao2023survey}, lo sviluppo dei modelli di linguaggio può essere suddiviso in quattro fasi principali, riassunte nella Figura~\ref{fig:evoluzione-lm}:
-
-\begin{itemize}
-    \item \textbf{Statistical Language Model (SLM)}: la probabilità di una parola viene stimata contando le sequenze di parole osservate in un corpus;
-    \item \textbf{Neural Language Model (NLM)}: le stime statistiche vengono sostituite da reti neurali, che rappresentano le parole come vettori continui;
-    \item \textbf{Pre-trained Language Model (PLM)}: un modello viene prima addestrato su grandi quantità di testo e poi specializzato in compiti specifici;
-    \item \textbf{Large Language Model (LLM)}: l'aumento delle dimensioni dei modelli fa emergere abilità assenti nei modelli più piccoli.
-\end{itemize}
+Il linguaggio è lo strumento con cui l'essere umano dà forma ai propri pensieri per esprimerli e condividerli con il resto del mondo. 
+Riprodurre questo processo nelle macchine è da decenni uno degli obiettivi centrali dell'intelligenza artificiale. 
+Seguendo Zhao et al.\ \cite{zhao2023survey}, lo sviluppo dei modelli di linguaggio può essere diviso in quattro fasi 
+(Figura~\ref{fig:evoluzione-lm}), ciascuna nata per superare i limiti della precedente. Dunque, questa sezione si propone
+di descrivere queste fasi, con particolare attenzione agli LLM, che sono il punto di partenza per la definizione di agente.
 
 \begin{figure}[h]
     \centering
@@ -40,42 +41,47 @@ Riprodurre questa capacità nelle macchine è stato per decenni uno degli obiett
 \end{figure}
 
 
-\noindent Ciascuna fase nasce per superare i limiti della precedente, come descritto nelle sottosezioni seguenti.
-
-
-
 
 \subsection{Statistical Language Model (SLM)}
-Negli anni '90 nascono i modelli di linguaggio statistici (Statistical Language Model, SLM), che sono basati sull'assunzione di Markov: la probabilità di una parola viene stimata a partire da un contesto limitato di parole precedenti, secondo una metodologia n-gram. Un modello n-gram approssima la probabilità di un'intera sequenza di parole scomponendola in una serie di probabilità condizionate, ciascuna delle quali dipende non dall'intera storia della sequenza ma soltanto dalle $n-1$ parole immediatamente precedenti:
+Negli anni '90 nascono i modelli di linguaggio statistici (Statistical Language Model, SLM), che sono basati sull'assunzione di Markov: 
+la probabilità di una parola viene stimata a partire da un contesto limitato di parole precedenti, secondo una metodologia n-gram. 
+Un modello n-gram approssima la probabilità di un'intera sequenza di parole scomponendola in una serie di probabilità condizionate, 
+ciascuna delle quali dipende non dall'intera storia della sequenza ma soltanto dalle $n-1$ parole immediatamente precedenti:
 
 \[
 P(w_1, w_2, \dots, w_T) \approx \prod_{t=1}^{T} P(w_t \mid w_{t-n+1}, \dots, w_{t-1})
 \]
 
-Ad esempio, in un modello bigram ($n=2$) la probabilità di ogni parola dipende soltanto dalla parola immediatamente precedente, mentre in un modello trigram ($n=3$) dipende dalle due parole precedenti. Tali probabilità vengono stimate contando direttamente le occorrenze di queste sequenze all'interno di un corpus di addestramento. All'aumentare di $n$ il modello riesce a catturare dipendenze linguistiche più ampie, ma il numero di combinazioni possibili di parole cresce in modo esponenziale, rendendo sempre più difficile stimarne le probailità in modo affidabile. Questo fenomeno è noto come maledizione della dimensionalità, che limita fortemente la capacità di questi modelli di generalizzare su contesti ampi.
+Ad esempio, in un modello bigram ($n=2$) la probabilità di ogni parola dipende soltanto dalla parola immediatamente precedente, 
+mentre in un modello trigram ($n=3$) dipende dalle due parole precedenti. Tali probabilità vengono stimate contando direttamente 
+le occorrenze di queste sequenze all'interno di un set di addestramento. All'aumentare di $n$ il modello riesce a catturare
+dipendenze linguistiche più ampie, ma il numero di combinazioni possibili di parole cresce in modo esponenziale, rendendo sempre 
+più difficile stimarne le probabilità in modo affidabile. Questo fenomeno, noto come \emph{curse of dimensionality} (maledizione della 
+dimensionalità), limita fortemente la capacità di questi modelli di generalizzare su contesti ampi.
 
 \subsection{Neural Language Model (NLM)}
-Successivamente, nascono i modelli di linguaggio neurali (Neural Language Model, NLM), che sostituiscono le stime statistiche degli n-gram con reti neurali addestrate a predire la parola successiva. Una delle innovazioni principali introdotte da questi modelli è la rappresentazione distribuita delle parole (word embedding): ogni parola del vocabolario viene associata a un vettore denso e continuo, appreso automaticamente durante l'addestramento, in modo tale che parole con significato o utilizzo simile siano rappresentate da vettori vicini nello spazio degli embedding. Questo supera uno dei limiti principali dei modelli n-gram, che trattano ogni parola come un simbolo discreto e indipendente, incapace di catturare relazioni semantiche tra termini diversi.
-
-L'architettura più utilizzata in questo contesto è la Recurrent Neural Network (RNN), una rete progettata per elaborare sequenze di lunghezza variabile mantenendo uno stato interno, detto hidden state, aggiornato a ogni passo temporale sulla base dell'input corrente e dello stato al passo precedente:
-
-\[
-h_t = f(W_h h_{t-1} + W_x x_t + b)
-\]
-
-dove $x_t$ rappresenta l'embedding della parola al tempo $t$, $h_t$ lo stato nascosto risultante, e $f$ una funzione di attivazione non lineare. La probabilità della parola successiva viene quindi stimata a partire da $h_t$. A differenza dei modelli n-gram, in cui il contesto considerato è limitato a una finestra fissa di $n-1$ parole, lo stato nascosto di una RNN incorpora in linea di principio informazioni provenienti dall'intera sequenza osservata fino a quel preciso momento, superando così i limiti di contesto ristretto tipici dei modelli statistici. 
-Tuttavia, anche le RNN incontrano difficoltà nel mantenere informazioni rilevanti su sequenze molto lunghe, a causa del fenomeno noto come vanishing gradient, che ne limita l'efficacia nel catturare dipendenze a lungo raggio. 
-
+Successivamente, nascono i modelli di linguaggio neurali (Neural Language Model, NLM), che sostituiscono le stime statistiche degli 
+n-gram con reti neurali addestrate a predire la parola successiva. Una delle innovazioni principali introdotte da questi modelli 
+è la rappresentazione distribuita delle parole (word embedding): ogni parola del vocabolario viene associata a un vettore denso 
+e continuo, appreso automaticamente durante l'addestramento, in modo tale che parole con significato o utilizzo simile siano 
+rappresentate da vettori vicini nello spazio degli embedding. Questo supera uno dei limiti principali dei modelli n-gram, 
+che trattano ogni parola come un simbolo discreto e indipendente, incapace di catturare relazioni semantiche tra termini diversi.
+L'architettura più utilizzata in questa fase è la Recurrent Neural Network (RNN), che elabora la sequenza, una parola alla volta, mantenendo
+ uno stato interno (\emph{hidden state}) aggiornato a ogni passo in base alla parola corrente e allo stato precedente. 
+ Da questo stato viene stimata la probabilità della parola successiva. A differenza degli n-gram, limitati a una finestra fissa di $n-1$ parole,
+  l'\emph{hidden state} può in linea di principio riassumere l'intera sequenza osservata fino a quel momento. In pratica però, le RNN faticano
+   a conservare informazioni su sequenze lunghe a causa del \emph{vanishing gradient}; varianti come le Long Short-Term Memory (LSTM) attenuano
+ il problema ma non lo eliminano del tutto.
 \subsection{Pre-Trained Language Model (PLM)}
 Un ulteriore salto avviene con i modelli di linguaggio pre-addestrati (Pre-trained Language Model, PLM), che introducono il concetto del pre-training seguito da fine-tuning: il modello viene prima addestrato su grandi quantità di testo non etichettato per apprendere una rappresentazione generale del linguaggio, e successivamente specializzato su compiti specifici tramite un ulteriore addestramento su un dataset etichettato di dimensioni molto più contenute.
 Un primo tentativo in questa direzione viene fatto da ELMo \cite{peters2018elmo} che propone di ottenere rappresentazioni delle parole sensibili al contesto pre-addestrando una rete bidirectional LSTM (biLSTM): a differenza delle rappresentazioni distribuite statiche introdotte dai NLM (come word2vec), in cui ogni parola è associata a un unico vettore fisso indipendentemente dal contesto in cui compare, ELMo genera una rappresentazione diversa per la stessa parola a seconda della frase in cui è inserita, combinando gli stati nascosti della biLSTM applicata in entrambe le direzioni della sequenza.
-Il salto decisivo avviene però con BERT (Bidirectional Encoder Representations from Transformers) \cite{devlin2018bert}, che sostituisce la LSTM con l'architettura Transformer descritta in precedenza, sfruttandone il meccanismo di self-attention per catturare il contesto bidirezionale in modo più efficiente e parallelizzabile. BERT viene pre-addestrato tramite il compito di masked language modeling (MLM): una porzione casuale dei token in input viene sostituita con uno speciale token \texttt{[MASK]}, e il modello viene addestrato a predire il token originale a partire dal contesto circostante, sia a sinistra che a destra:
+Il salto decisivo avviene però con BERT (Bidirectional Encoder Representations from Transformers) \cite{devlin2018bert}, che abbandona le reti ricorrenti in favore di un'architettura basata sul meccanismo di attenzione \cite{vaswani2017attention}, più efficiente e parallelizzabile. BERT viene pre-addestrato con il \emph{masked language modeling} (MLM): una parte dei token in input (il 15\% nel lavoro originale) viene mascherata, tipicamente sostituendola con il token speciale \texttt{[MASK]}, e il modello deve ricostruire i token originali usando il contesto sia a sinistra sia a destra:
 
 \[
 \mathcal{L}_{\text{MLM}} = - \sum_{i \in \mathcal{M}} \log P(w_i \mid w_{\setminus \mathcal{M}})
 \]
 
-dove $\mathcal{M}$ indica l'insieme delle posizioni mascherate e $w_{\setminus \mathcal{M}}$ la sequenza di input privata dei token mascherati. A differenza della predizione del token successivo vista in precedenza, che sfrutta solo il contesto a sinistra, questo obiettivo di pre-training permette al modello di condizionare la propria previsione sull'intero contesto della frase.
+dove $\mathcal{M}$ indica l'insieme delle posizioni mascherate e $w_{\setminus \mathcal{M}}$ la sequenza di input privata dei token mascherati. A differenza della predizione della parola successiva vista in precedenza, che sfrutta solo il contesto a sinistra, questo obiettivo di pre-training permette al modello di condizionare la propria previsione sull'intero contesto della frase.
 
 Una volta completato il pre-training, il modello viene adattato a uno specifico compito finale (come la classificazione del testo o il question answering). A tal fine, si integra uno strato dedicato al task al di sopra delle rappresentazioni pre-addestrate e si affinano i pesi dell'intera architettura — o, in alternativa, del solo nuovo strato — su un dataset etichettato di dimensioni contenute. Questa seconda fase prende il nome di fine-tuning. Il paradigma basato su pre-training e fine-tuning ha consentito di raggiungere prestazioni allo stato dell'arte in un ampio spettro di applicazioni del linguaggio naturale, riducendo drasticamente il fabbisogno di dati etichettati rispetto all'addestramento ex novo di un modello dedicato.
 
@@ -91,216 +97,181 @@ Per distinguere questi modelli di dimensioni estremamente elevate dai PLM più p
 
 
 
-
-
 \section{Dal modello di linguaggio al ragionamento e all'azione}
 \label{sec:ragionamento-azione}
 
 
-Le abilità emergenti descritte nella sezione precedente non alterano la natura fondamentale degli LLM: essi restano modelli statistici addestrati a generare, token dopo token, la continuazione più probabile di una sequenza in input e operano esclusivamente all'interno della propria finestra di contesto. Da questa caratteristica derivano due limiti strutturali:
+Le abilità emergenti descritte nella sezione precedente non alterano la natura fondamentale degli LLM: essi restano dei modelli statistici 
+addestrati a generare, token dopo token, la continuazione più probabile di una sequenza in input, operando esclusivamente all'interno della propria finestra di contesto.
+Da questa caratteristica derivano due limiti strutturali:
 
 \begin{itemize}
-    \item \textbf{Ragionamento a più passaggi.} Nei compiti che richiedono una concatenazione di passaggi logici, come un problema aritmetico articolato o un ragionamento simbolico, chiedere direttamente la risposta finale costringe il modello a produrla senza esplicitare alcun passaggio intermedio, svolgendo implicitamente un ragionamento che un essere umano affronterebbe per gradi. La capacità di ragionare per passi, pur presente nei modelli di grandi dimensioni, non si manifesta spontaneamente, ma deve essere sollecitata.
-    \item \textbf{Accesso a informazioni esterne.} Il modello dispone soltanto della conoscenza codificata nei propri parametri durante l'addestramento. Di fronte a domande su eventi successivi a tale fase, o su informazioni che non ha appreso, non ha modo di reperire i dati mancanti e tende a generare risposte plausibili nella forma ma errate nel contenuto: è una delle manifestazioni del fenomeno noto come \emph{allucinazione}.
+\item \textbf{Ragionamento a più passaggi.} Nei compiti che richiedono una sequenza di passaggi logici, come un problema aritmetico articolato
+ o un ragionamento simbolico, chiedere direttamente la risposta finale costringe il modello a produrla senza esplicitare alcun passaggio
+  intermedio. Questo significa che il modello svolge, in un colpo solo, un ragionamento che una persona scomporrebbe in più passi. 
+    \item \textbf{Accesso a informazioni esterne.} Il modello dispone soltanto della conoscenza codificata nei propri parametri durante
+     l'addestramento. Di fronte a domande su eventi successivi a tale fase, o su informazioni che non ha appreso, non ha modo di reperire 
+     i dati mancanti. Dunque, tende a generare risposte plausibili nella forma, ma errate nel contenuto: è una delle manifestazioni
+    del fenomeno noto come \emph{allucinazione}.
 \end{itemize}
 
-Questa sezione presenta tre contributi che, letti come una progressione concettuale più che cronologica, hanno affrontato questi limiti: l'esplicitazione del ragionamento tramite una tecnica di prompting (Chain-of-Thought), che risponde al primo; l'uso di strumenti esterni (Toolformer), che risponde al secondo; e infine l'alternanza di ragionamento e azione in un unico ciclo (ReAct), che li affronta entrambi e costituisce il modello di riferimento per gli agenti basati su LLM discussi nella Sezione~\ref{sec:definizione-agent}.
-
-
+Questa sezione presenta tre approcci che hanno affrontato questi limiti. Il primo è Chain-of-Thought, che rende esplicito il ragionamento
+ del modello; il secondo è Toolformer, che gli consente di utilizzare strumenti esterni. Il terzo è ReAct, che combina le due capacità
+  alternando ragionamento e azione in un unico ciclo e costituisce il modello di riferimento per gli agenti discussi 
+  nella Sezione~\ref{sec:definizione-agent}.
 
 \subsection{Il ragionamento esplicito: Chain-of-Thought}
 \label{sec:cot}
 
-Il primo dei due limiti individuati viene affrontato rendendo esplicito il ragionamento del modello. Il punto di partenza è l'in-context learning introdotto nella sezione precedente, nella forma resa popolare da GPT-3 con il nome di \emph{few-shot prompting} \cite{brown2020gpt3}. In questa modalità, il prompt fornito al modello contiene $k$ dimostrazioni del compito, ciascuna formata da una domanda $x_i$ e dalla relativa risposta $y_i$, seguite dalla nuova domanda $x$ a cui il modello deve rispondere:
+Per il primo limite, la soluzione proposta in letteratura consiste nel far scrivere al modello i passaggi del ragionamento prima della risposta. Il punto di partenza è l'in-context learning, e in particolare il \emph{few-shot prompting} introdotto con GPT-3 \cite{brown2020gpt3}, in cui il prompt contiene alcuni esempi di problemi già risolti seguiti dalla nuova domanda.
+
+Se $x_i$ e $y_i$ sono la domanda e la risposta dell'$i$-esimo esempio e $x$ è la nuova istanza, il prompt $\mathcal{P}$ con $k$ esempi è
 \[
-\mathcal{P} = x_1 \oplus y_1 \oplus \dots \oplus x_k \oplus y_k \oplus x,
-\qquad
+\mathcal{P} = x_1 \oplus y_1 \oplus \dots \oplus x_k \oplus y_k \oplus x
+\]
+dove $\oplus$ indica la concatenazione del testo. Il modello genera la risposta $y$ un token alla volta, e ogni token dipende dal prompt e da quelli già generati:
+\[
 p_\theta(y \mid \mathcal{P}) = \prod_{t=1}^{|y|} p_\theta(y_t \mid \mathcal{P}, y_{<t})
 \]
-dove $\oplus$ indica la concatenazione di testo e $p_\theta$ la distribuzione di probabilità definita dal modello con parametri $\theta$. La risposta $y$ viene generata token per token, campionando da tale distribuzione oppure, come nella decodifica \emph{greedy}, scegliendo a ogni passo il token più probabile.
+con $p_\theta$ distribuzione del modello di parametri $\theta$, $y_t$ il $t$-esimo token della risposta e $y_{<t}$ i token che lo precedono.
 
-I parametri non vengono modificati: il modello si limita a riconoscere, dalle dimostrazioni, la struttura del compito e a riprodurla sulla nuova domanda. Questo approccio risulta efficace quando la risposta discende direttamente dalla domanda, come nella classificazione del \emph{sentiment} di una frase, ma mostra evidenti limiti sui problemi che richiedono più passaggi logici. In questi casi le dimostrazioni inducono il modello a produrre subito la risposta finale, senza esplicitare alcun passaggio intermedio, costringendolo di fatto a svolgere l'intero ragionamento in modo implicito.
+In questo schema i parametri restano fissi: il modello ricava dagli esempi il formato del compito e lo applica alla nuova domanda. Per compiti in cui la risposta segue quasi immediatamente dalla domanda, per esempio classificare il \emph{sentiment} di una frase, l'approccio funziona bene. Nei problemi a più passaggi invece gli esempi abituano il modello a scrivere subito il risultato, e tutto il ragionamento resta implicito.
 
 \subsubsection{Il prompting Chain-of-Thought}
 
-Wei et al.\ \cite{wei2022cot} propongono una modifica tanto semplice quanto efficace: arricchire ciascuna dimostrazione con una \emph{chain of thought} (catena di ragionamento), ovvero una sequenza di passaggi intermedi, espressi in linguaggio naturale, che conducono dalla domanda alla risposta. Ogni dimostrazione diventa così una tripla $(x_i, c_i, y_i)$, dove $c_i$ è la catena di ragionamento, e il prompt assume la forma:
+Wei et al.\ \cite{wei2022cot} modificano gli esempi aggiungendo a ciascuno una \emph{chain of thought} (catena di ragionamento), cioè i passaggi intermedi in linguaggio naturale che portano dalla domanda alla risposta. Ogni esempio diventa una tripla $(x_i, c_i, y_i)$, con $c_i$ catena di ragionamento, e il prompt diventa
 \[
 \mathcal{P}_{\text{CoT}} = x_1 \oplus c_1 \oplus y_1 \oplus \dots \oplus x_k \oplus c_k \oplus y_k \oplus x
 \]
-Replicando la struttura delle dimostrazioni, il modello non produce più direttamente la risposta, ma genera innanzitutto una propria catena di ragionamento $c$, seguita dalla risposta $y$. Per la regola della catena della probabilità, la distribuzione congiunta di ragionamento e risposta si scompone in due fattori, che, poiché la generazione procede da sinistra verso destra, corrispondono esattamente alle probabilità calcolate dal modello durante la generazione:
+Seguendo gli esempi, il modello scrive prima una sua catena $c$ e poi la risposta $y$. Dato che la generazione procede da sinistra a destra, la probabilità congiunta si può scrivere come
 \[
 p_\theta(c, y \mid \mathcal{P}_{\text{CoT}}) =
 \underbrace{p_\theta(c \mid \mathcal{P}_{\text{CoT}})}_{\text{ragionamento}}
 \cdot
-\underbrace{p_\theta(y \mid \mathcal{P}_{\text{CoT}}, c)}_{\text{risposta}},
-\qquad
-p_\theta(c \mid \mathcal{P}_{\text{CoT}}) = \prod_{t=1}^{|c|} p_\theta(c_t \mid \mathcal{P}_{\text{CoT}}, c_{<t})
+\underbrace{p_\theta(y \mid \mathcal{P}_{\text{CoT}}, c)}_{\text{risposta}}
 \]
-dove $c_t$ è il $t$-esimo token della catena e $c_{<t}$ i token che lo precedono. Il secondo fattore evidenzia l'aspetto essenziale della tecnica: la risposta non è più condizionata soltanto sulla domanda, ma anche sul ragionamento che il modello stesso ha appena scritto. La Figura~\ref{fig:cot-esempio} mostra la differenza tra le due modalità su un esempio tratto dal lavoro originale.
+Il fattore interessante è il secondo, perché la risposta dipende anche dal ragionamento appena generato e non più solo dalla domanda. Un esempio tratto dal lavoro originale è riportato in Figura~\ref{fig:cot-esempio}.
 
 \begin{figure}[htbp]
     \centering
-    \resizebox{\linewidth}{!}{%
     \begin{tikzpicture}[
-        box/.style={draw, rounded corners, text width=6.4cm, align=left, font=\scriptsize, inner sep=6pt},
-        inbox/.style={box, fill=blue!5},
-        outbad/.style={box, fill=red!10},
-        outgood/.style={box, fill=green!10},
+        box/.style={draw, rounded corners, align=left, font=\footnotesize, inner sep=5pt, text width=6cm},
+        ingresso/.style={box, fill=blue!5},
+        errata/.style={box, fill=red!10},
+        corretta/.style={box, fill=green!10},
         titolo/.style={font=\small\bfseries},
         arrow/.style={-{Stealth[length=2.5mm]}, thick}
     ]
-        \node[titolo] (t1) at (0,0) {Prompting standard};
-        \node[titolo] (t2) at (7.4,0) {Prompting Chain-of-Thought};
+        \node[titolo] (t1) at (0,0)   {Prompting standard};
+        \node[titolo] (t2) at (6.8,0) {Prompting Chain-of-Thought};
 
-        \node[inbox, below=0.3cm of t1] (in1) {%
-            \textbf{Input}\\[3pt]
-            \textbf{D:} Roger ha 5 palline da tennis. Compra altre 2 confezioni, ciascuna da 3 palline. Quante palline ha ora?\\[2pt]
-            \textbf{R:} La risposta è 11.\\[5pt]
-            \textbf{D:} La mensa aveva 23 mele. Se ne ha usate 20 per il pranzo e ne ha comprate altre 6, quante mele ha?\\[2pt]
-            \textbf{R:}};
+        % Prompting standard
+        \node[ingresso, below=4pt of t1] (i1) {%
+            \textbf{Input del modello}\\[2pt]
+            D: Roger ha 5 palline da tennis. Compra altre 2 confezioni da 3 palline ciascuna. Quante palline ha adesso?\\
+            R: La risposta è 11.\\[4pt]
+            D: La mensa aveva 23 mele. Ne ha usate 20 per il pranzo e ne ha comprate altre 6. Quante mele ha?};
+        \node[errata, below=0.7cm of i1] (o1) {%
+            \textbf{Output del modello}\\[2pt]
+            R: La risposta è 27. \textit{(errata)}};
 
-        \node[inbox, below=0.3cm of t2] (in2) {%
-            \textbf{Input}\\[3pt]
-            \textbf{D:} Roger ha 5 palline da tennis. Compra altre 2 confezioni, ciascuna da 3 palline. Quante palline ha ora?\\[2pt]
-            \textbf{R:} \textit{Roger aveva inizialmente 5 palline. 2 confezioni da 3 palline sono 6 palline. $5 + 6 = 11$.} La risposta è 11.\\[5pt]
-            \textbf{D:} La mensa aveva 23 mele. Se ne ha usate 20 per il pranzo e ne ha comprate altre 6, quante mele ha?\\[2pt]
-            \textbf{R:}};
+        % Prompting Chain-of-Thought
+        \node[ingresso, below=4pt of t2] (i2) {%
+            \textbf{Input del modello}\\[2pt]
+            D: Roger ha 5 palline da tennis. Compra altre 2 confezioni da 3 palline ciascuna. Quante palline ha adesso?\\
+            R: \textcolor{blue!60!black}{Roger aveva inizialmente 5 palline. 2 confezioni da 3 palline sono 6 palline. $5 + 6 = 11$.} La risposta è 11.\\[4pt]
+            D: La mensa aveva 23 mele. Ne ha usate 20 per il pranzo e ne ha comprate altre 6. Quante mele ha?};
+        \node[corretta, below=0.7cm of i2] (o2) {%
+            \textbf{Output del modello}\\[2pt]
+            R: \textcolor{blue!60!black}{La mensa aveva inizialmente 23 mele. Ne ha usate 20 per il pranzo, quindi ne aveva $23 - 20 = 3$. Ne ha comprate altre 6, quindi ne ha $3 + 6 = 9$.} La risposta è 9. \textit{(corretta)}};
 
-        \node[outgood, below=0.9cm of in2] (out2) {%
-            \textbf{Output del modello}\\[3pt]
-            \textbf{R:} \textit{La mensa aveva inizialmente 23 mele. Ne ha usate 20 per il pranzo, quindi $23 - 20 = 3$. Ne ha comprate altre 6, quindi $3 + 6 = 9$.} La risposta è 9.\\[2pt]
-            \hfill (corretta)};
-
-        \node[outbad, anchor=north] (out1) at (in1.south |- out2.north) {%
-            \textbf{Output del modello}\\[3pt]
-            \textbf{R:} La risposta è 27.\\[2pt]
-            \hfill (errata)};
-
-        \draw[arrow] (in1) -- (out1);
-        \draw[arrow] (in2) -- (out2);
-    \end{tikzpicture}%
-    }
-    \caption{Confronto tra prompting standard e prompting Chain-of-Thought, adattato da Wei et al.\ \cite{wei2022cot}; le risposte riportate sono quelle prodotte dal modello negli esperimenti originali. Il prompt termina con ``R:'' senza risposta: il modello genera il testo che segue, completando lo schema delle dimostrazioni. In corsivo la catena di ragionamento, presente nella dimostrazione e riprodotta dal modello nella risposta. Per brevità è riportata una sola dimostrazione; negli esperimenti originali ne vengono utilizzate otto.}
+        \draw[arrow] (i1) -- (o1);
+        \draw[arrow] (i2) -- (o2);
+    \end{tikzpicture}
+    \caption{Confronto tra prompting standard e prompting Chain-of-Thought, adattato da Wei et al.\ \cite{wei2022cot}. Nel secondo caso l'esempio contiene i passaggi intermedi (in blu), che il modello riproduce sulla nuova domanda arrivando alla risposta corretta.}
     \label{fig:cot-esempio}
 \end{figure}
 
-Con il \emph{prompting} standard, il modello restituisce direttamente 27, anziché il valore corretto 9: poiché la risposta è priva di passaggi intermedi, è impossibile stabilire come il modello sia giunto a questa conclusione o in quale punto abbia sbagliato. Con il prompting Chain-of-Thought, invece, il modello scompone il problema nei passaggi necessari, calcolando dapprima la sottrazione delle mele utilizzate ($23 - 20 = 3$) e successivamente l'aggiunta di quelle acquistate ($3 + 6 = 9$), e giunge così alla soluzione corretta.
+Con il prompting standard il modello risponde 27 invece di 9, e senza passaggi intermedi non si riesce a capire dove sia l'errore. Con Chain-of-Thought il modello calcola le mele rimaste dopo il pranzo ($23 - 20 = 3$), aggiunge quelle comprate ($3 + 6 = 9$) e arriva al risultato giusto.
 
-Infine, \emph{Chain-of-Thought} offre una fondamentale forma di interpretabilità: rendendo esplicito il percorso deduttivo che ha condotto alla risposta, consente di individuare con precisione il punto in cui si è eventualmente verificato un errore, a differenza di quanto accade nel caso del \emph{prompting} standard illustrato in Figura~\ref{fig:cot-esempio}.
+La tecnica funziona perché scompone il problema in sottoproblemi più semplici, ognuno dei quali il modello riesce a risolvere con buona affidabilità, un po' come nel \emph{divide et impera}. Ogni risultato intermedio, una volta scritto, entra nel contesto e può essere usato nei passaggi successivi; nell'esempio, il 3 viene prima calcolato e poi riutilizzato. In pratica il testo generato fa da memoria di lavoro, che nell'architettura del modello non esiste. Esiste anche un risultato teorico a supporto: Feng et al.\ \cite{feng2023cot} dimostrano che alcuni problemi, tra cui la valutazione di espressioni aritmetiche, non possono essere risolti da un modello di linguaggio di dimensione limitata che produce direttamente la risposta, mentre diventano risolvibili se il modello può generare i passaggi intermedi.
 
-
-\subsubsection{Perché il ragionamento esplicito funziona}
-
-L'efficacia della tecnica può essere spiegata da due punti di vista complementari.
-
-Il primo riguarda la \emph{scomposizione del problema}. Un problema a più passaggi viene suddiviso in sottoproblemi elementari, ciascuno sufficientemente semplice da poter essere risolto in modo affidabile, secondo un approccio analogo al \emph{divide et impera}. I risultati intermedi, una volta generati, entrano a far parte del contesto e diventano input per i passaggi successivi: nell'esempio della Figura~\ref{fig:cot-esempio}, il valore intermedio $3$ viene prima calcolato e poi riutilizzato. Il testo prodotto svolge così la funzione di una memoria di lavoro esterna, di cui l'architettura del modello è priva.
-
-Il secondo riguarda la \emph{quantità di calcolo}. Un Transformer con $L$ strati esegue, per ciascun token generato, una quantità di calcolo fissa, indipendente dalla difficoltà del problema. Se la risposta deve essere prodotta immediatamente, magari in un solo token, il calcolo seriale disponibile per ottenerla è limitato a un singolo passaggio attraverso gli $L$ strati. Generando invece $T$ token di ragionamento prima della risposta, ciascuno dei quali viene reinserito come input per i successivi, il modello dispone di $T$ passaggi aggiuntivi: la catena di ragionamento consente di allocare più calcolo ai problemi che richiedono più passaggi \cite{wei2022cot}. Questa intuizione trova un riscontro teorico nel lavoro di Feng et al.\ \cite{feng2023cot}, che dimostrano come, sotto ipotesi standard della teoria della complessità computazionale, esistano problemi, tra cui la valutazione di espressioni aritmetiche, che un Transformer di profondità limitata non può risolvere producendo direttamente la risposta, ma che diventano risolvibili quando al modello è consentito generare passaggi intermedi.
-
-La catena di ragionamento offre infine una forma di interpretabilità: rendendo osservabile il percorso che ha condotto alla risposta, permette di individuare il passaggio in cui un eventuale errore si è verificato. Questa lettura va però adottata con cautela. Turpin et al.\ \cite{turpin2023unfaithful} mostrano che la spiegazione prodotta dal modello non riflette necessariamente il processo che ha effettivamente determinato la risposta: introducendo nel prompt elementi di condizionamento, ad esempio dimostrazioni in cui la risposta corretta è sempre la prima opzione, il modello modifica la propria risposta senza che la catena di ragionamento ne faccia menzione.
-
-\subsubsection{Risultati e sviluppi successivi}
-
-Wei et al.\ valutano la tecnica su compiti di ragionamento aritmetico, di senso comune e simbolico. Sul benchmark GSM8K, composto da problemi matematici in linguaggio naturale di livello scolastico \cite{cobbe2021gsm8k}, il modello PaLM da 540 miliardi di parametri passa dal 17,9\% di risposte corrette con prompting standard al 56,9\% con Chain-of-Thought \cite{wei2022cot}. Con sole otto dimostrazioni e senza alcun aggiornamento dei parametri, il risultato supera il precedente stato dell'arte, ottenuto da un modello specializzato tramite fine-tuning. Il beneficio è a sua volta un'abilità emergente: si manifesta soltanto nei modelli con circa 100 miliardi di parametri o più, mentre i modelli più piccoli producono catene di ragionamento scorrevoli ma logicamente incoerenti, che possono persino peggiorare le prestazioni.
-
-Kojima et al.\ \cite{kojima2022zeroshot} mostrano inoltre che le dimostrazioni non sono indispensabili: è sufficiente aggiungere alla domanda la frase \emph{``Let's think step by step''} (``Ragioniamo passo dopo passo'') per indurre il modello a produrre una catena di ragionamento, con miglioramenti consistenti su diversi benchmark aritmetici. Il risultato conferma che la capacità di ragionare per passi è già presente nei modelli di grandi dimensioni, e che il prompting si limita a sollecitarla. Negli anni successivi, l'idea è stata portata dal prompting all'addestramento: i cosiddetti modelli di ragionamento vengono addestrati, tipicamente tramite apprendimento per rinforzo, a produrre spontaneamente lunghe catene di ragionamento prima della risposta \cite{deepseek2025r1}.
+Kojima et al.\ \cite{kojima2022zeroshot} hanno poi osservato che gli esempi non sono strettamente necessari. Aggiungendo alla domanda la sola frase \emph{``Let's think step by step''} (``Ragioniamo passo dopo passo'') il modello produce da solo una catena di ragionamento. Più recentemente l'idea è passata dal prompting all'addestramento, con i cosiddetti modelli di ragionamento, addestrati a generare lunghe catene di ragionamento prima di rispondere \cite{deepseek2025r1}.
 
 \subsubsection{Limiti: un ragionamento chiuso}
 
-Chain-of-Thought migliora il modo in cui il modello ragiona, ma non amplia ciò su cui può ragionare. La catena di ragionamento è costruita interamente a partire dalla conoscenza codificata nei parametri: se uno dei fatti su cui si basa è errato o mancante, il modello non ha modo di accorgersene né di verificarlo, e l'errore si propaga nei passaggi successivi, producendo una catena coerente nella forma ma fondata su una premessa falsa. Analizzando il comportamento di Chain-of-Thought su compiti di question answering che richiedono conoscenze fattuali, Yao et al.\ \cite{yao2023react} osservano che l'allucinazione di fatti ne costituisce la principale causa di errore. Il ragionamento esplicito affronta dunque il primo dei due limiti individuati all'inizio di questa sezione, ma lascia intatto il secondo: per superarlo occorre che il modello possa reperire informazioni ed eseguire operazioni al di fuori di sé, attraverso strumenti esterni.
-
-
+Con Chain-of-Thought il modello ragiona meglio, ma sempre sulle stesse informazioni, cioè quelle contenute nei suoi parametri. Se un fatto usato nella catena è sbagliato o manca, il modello non può accorgersene e l'errore si trascina nei passaggi successivi, con il risultato di un ragionamento formalmente coerente ma basato su una premessa falsa. Yao et al.\ \cite{yao2023react} notano proprio che, nei compiti che richiedono conoscenze fattuali, la causa principale degli errori di Chain-of-Thought è l'allucinazione di fatti. Il primo limite viene quindi affrontato, il secondo no. Per risolverlo il modello deve poter cercare informazioni ed eseguire operazioni all'esterno, tramite strumenti.
 
 \subsection{L'utilizzo di strumenti esterni: Toolformer}
 \label{sec:toolformer}
 
-Il secondo limite presentato dagli LLM riguarda l'\emph{accesso a informazioni esterne}: il modello dispone soltanto della conoscenza codificata nei propri parametri durante l'addestramento e, di fronte a informazioni che non possiede, non ha modo di reperirle. Questo limite richiede un intervento di natura diversa dal precedente. Nessuna tecnica di prompting può fornire al modello un'informazione assente dai suoi parametri, né garantire l'esattezza di operazioni come un calcolo aritmetico, che il modello esegue predicendo token anziché applicando un procedimento: per rispondere a una domanda su un evento recente, o per svolgere un calcolo senza errori, il modello deve poter delegare il compito a un sistema esterno, come un motore di ricerca o una calcolatrice, e utilizzarne il risultato. Toolformer, proposto da Schick et al.\ \cite{schick2023toolformer}, affronta questo problema insegnando a un modello di linguaggio a decidere autonomamente \emph{quali} strumenti invocare, \emph{quando} invocarli, \emph{con quali argomenti} e \emph{come} integrarne il risultato nel testo che sta generando.
+Il secondo limite, come detto, riguarda l'accesso a informazioni esterne, e qui il prompting non basta. Nessuna tecnica di prompting può dare al modello un'informazione che non ha nei parametri, e nemmeno garantire che un calcolo sia esatto, visto che il modello non applica un procedimento ma predice token. Per rispondere su un evento recente o per fare un calcolo senza errori, il modello deve poter passare il compito a un sistema esterno, come un motore di ricerca o una calcolatrice, e poi usarne il risultato.
 
-L'elemento distintivo dell'approccio è che l'apprendimento avviene in modo \emph{auto-supervisionato}: non richiede grandi quantità di esempi annotati manualmente, ma soltanto poche dimostrazioni per ciascuno strumento, a partire dalle quali è il modello stesso a generare i propri dati di addestramento.
+Toolformer \cite{schick2023toolformer} insegna a un modello di linguaggio a decidere da solo quali strumenti usare, quando usarli, con quali argomenti e come inserire il risultato nel testo generato. L'addestramento è auto-supervisionato: per ogni strumento bastano pochi esempi scritti a mano, e il resto dei dati di addestramento viene generato dal modello stesso.
 
 \subsubsection{Rappresentazione delle chiamate}
 
-Ciascun strumento è esposto come un'API, ossia un'interfaccia che riceve un input testuale e restituisce un risultato testuale. Una chiamata è rappresentata da una coppia $c = (a_c, i_c)$, dove $a_c$ è il nome dello strumento e $i_c$ il suo input. Per poter essere inserita nel testo, la chiamata viene linearizzata in una sequenza di token, delimitata da due token speciali, con o senza il relativo risultato $r$:
+Ogni strumento è trattato come un'API con input e output testuali. Una chiamata è una coppia $c = (a_c, i_c)$, con $a_c$ nome dello strumento e $i_c$ input. Per inserirla nel testo, la chiamata e il suo risultato $r$ vengono scritti come sequenza di token racchiusa tra due token speciali:
 \[
-e(c) = \langle\texttt{API}\rangle\; a_c(i_c)\; \langle\texttt{/API}\rangle,
-\qquad
 e(c, r) = \langle\texttt{API}\rangle\; a_c(i_c) \rightarrow r\; \langle\texttt{/API}\rangle
 \]
-Nella pratica, i token speciali sono resi con i caratteri ``\texttt{[}'', ``\texttt{]}'' e ``\texttt{->}''. Un testo contenente una chiamata alla calcolatrice ha, ad esempio, la forma seguente:
+In pratica i token speciali sono resi con i caratteri ``\texttt{[}'', ``\texttt{]}'' e ``\texttt{->}''. Un testo con una chiamata alla calcolatrice è ad esempio il seguente:
 \begin{quote}
 \small Of the 1,400 participants, 400 (i.e., \texttt{[Calculator(400 / 1400) -> 0.29]} 29\%) passed the test.
 \end{quote}
-Il testo resta così un'unica sequenza di token, che un modello di linguaggio può apprendere e generare come qualsiasi altro testo.
+In questo modo il testo rimane una normale sequenza di token, che il modello può imparare a generare come qualsiasi altro testo.
 
-\subsubsection{Costruzione del dataset di addestramento}
+\subsubsection{Costruzione del dataset e addestramento}
 
-Il punto di partenza è un corpus di testo ordinario $\mathcal{C}$, privo di chiamate a strumenti. Per ciascun testo $x = x_1, \dots, x_n$ del corpus, dove $x_j$ indica il $j$-esimo token, Toolformer costruisce una versione arricchita con le chiamate che si rivelano utili, attraverso tre passi successivi, illustrati nella Figura~\ref{fig:toolformer}.
+Si parte da un corpus di testo normale, senza chiamate. Per ogni testo Toolformer ne costruisce una versione con le chiamate che risultano utili, seguendo tre passi (Figura~\ref{fig:toolformer}):
 
-\paragraph{1. Campionamento delle chiamate.} Il modello riceve un prompt $\mathcal{P}_{\text{API}}$ contenente alcune dimostrazioni, scritte manualmente, di testi annotati con chiamate a uno specifico strumento. Per ciascuna posizione $i$ del testo, si calcola la probabilità che il modello inizi in quel punto una chiamata:
-\[
-p_i = p_\theta\big(\langle\texttt{API}\rangle \mid \mathcal{P}_{\text{API}} \oplus x_{1:i-1}\big)
-\]
-Vengono conservate soltanto le posizioni in cui tale probabilità supera una soglia $\tau_s$, fino a un massimo di $k$ posizioni. In ciascuna di esse, il modello genera fino a $m$ chiamate candidate, completando il testo a partire dal token $\langle\texttt{API}\rangle$ fino al token di chiusura $\langle\texttt{/API}\rangle$.
-
-\paragraph{2. Esecuzione delle chiamate.} Ogni chiamata candidata $c_i$ viene eseguita, ottenendo il risultato $r_i$. L'esecuzione dipende dallo strumento: può consistere nel calcolo di un'espressione, in una ricerca su Wikipedia o nell'interrogazione di un altro modello.
-
-\paragraph{3. Filtraggio delle chiamate.} È il passo centrale del metodo, che stabilisce quali chiamate siano effettivamente utili. L'idea è che una chiamata sia utile se il suo risultato aiuta il modello a predire il testo che la segue. Per misurarlo, si definisce una funzione di perdita pesata che valuta quanto bene il modello predice i token a partire dalla posizione $i$, quando il testo è preceduto da una sequenza $z$:
-\[
-L_i(z) = - \sum_{j=i}^{n} w_{j-i} \, \log p_\theta\big(x_j \mid z \oplus x_{1:j-1}\big)
-\]
-I pesi $w_t$ diminuiscono con la distanza $t$ dalla posizione della chiamata, in modo che contino soprattutto i token immediatamente successivi:
-\[
-w_t = \frac{\tilde{w}_t}{\sum_{s} \tilde{w}_s}, \qquad \tilde{w}_t = \max(0,\; 1 - 0.2\, t)
-\]
-Con questa scelta, soltanto i cinque token che seguono la chiamata contribuiscono alla perdita, con pesi decrescenti. Si confrontano quindi due valori della perdita:
-\[
-L_i^+ = L_i\big(e(c_i, r_i)\big),
-\qquad
-L_i^- = \min\Big(L_i(\varepsilon),\; L_i\big(e(c_i, \varepsilon)\big)\Big)
-\]
-dove $\varepsilon$ indica la sequenza vuota. $L_i^+$ è la perdita ottenuta fornendo al modello la chiamata insieme al suo risultato. $L_i^-$ è la migliore tra due alternative: nessuna chiamata, oppure la chiamata \emph{senza} il suo risultato. Il secondo termine è essenziale: una chiamata potrebbe ridurre la perdita non grazie al risultato, ma soltanto perché il testo della chiamata stessa, ad esempio la domanda posta allo strumento, suggerisce al modello la continuazione. Confrontando con entrambe le alternative, si isola il contributo del solo risultato. Una chiamata viene mantenuta se e solo se:
-\[
-L_i^- - L_i^+ \geq \tau_f
-\]
-ossia se il risultato dello strumento riduce la perdita di almeno una soglia $\tau_f$. In tutti questi calcoli la chiamata è fornita come prefisso del testo, anziché inserita nella posizione $i$, perché il modello non è ancora stato addestrato su testi contenenti chiamate.
+\begin{enumerate}
+    \item \textbf{Campionamento.} Al modello vengono dati alcuni esempi, scritti a mano, di testi annotati con chiamate a uno strumento. A partire da questi il modello sceglie i punti del testo in cui una chiamata potrebbe servire e per ciascuno propone alcune chiamate candidate.
+    \item \textbf{Esecuzione.} Le chiamate candidate vengono eseguite, ottenendo per esempio il valore di un'espressione, il risultato di una ricerca su Wikipedia o la risposta di un altro modello.
+    \item \textbf{Filtraggio.} Una chiamata viene tenuta solo se il suo risultato aiuta il modello a predire le parole successive del testo. Per verificarlo si confronta la predizione del testo successivo in tre condizioni: con la chiamata e il risultato, senza chiamata, e con la chiamata ma senza risultato. La terza condizione serve a scartare le chiamate che aiutano solo perché il testo della chiamata (per esempio la domanda rivolta allo strumento) anticipa già la continuazione, mentre quello che interessa è il contributo del risultato.
+\end{enumerate}
 
 \begin{figure}[htbp]
     \centering
-    \resizebox{\linewidth}{!}{%
     \begin{tikzpicture}[
-        box/.style={draw, rounded corners, align=left, font=\scriptsize, inner sep=5pt, text width=4.2cm},
-        testo/.style={box, fill=blue!5},
+        box/.style={draw, rounded corners, align=left, font=\footnotesize, inner sep=5pt, text width=4.6cm},
+        testo/.style={box, fill=blue!5, text width=9.8cm},
         chiamata/.style={box, fill=yellow!10},
         tenuta/.style={box, fill=green!10},
         scartata/.style={box, fill=red!10},
-        fase/.style={font=\small\bfseries, align=center},
+        fase/.style={font=\footnotesize\bfseries, anchor=east, align=right},
         arrow/.style={-{Stealth[length=2.5mm]}, thick}
     ]
-        \node[fase] (f0) at (-5,0)   {Testo originale};
-        \node[fase] (f1) at (0,0)    {1. Campionamento};
-        \node[fase] (f2) at (5,0)    {2. Esecuzione};
-        \node[fase] (f3) at (10,0)   {3. Filtraggio};
-        \node[fase] (f4) at (15.5,0) {Testo arricchito};
-
-        \node[testo] (x) at (-5,-2.1) {%
-            \textbf{Testo $x$}\\[2pt]
+        % Testo di partenza
+        \node[testo] (x) at (0,0) {%
+            \textbf{Testo originale}\\[2pt]
             Pittsburgh è anche nota come la Città dell'Acciaio.};
 
-        \node[chiamata] (c1) at (0,-1.3) {%
-            $c_i^1$: \texttt{QA}(``Con quale altro nome è nota Pittsburgh?'')};
-        \node[chiamata] (c2) at (0,-2.9) {%
-            $c_i^2$: \texttt{QA}(``In quale nazione si trova Pittsburgh?'')};
+        % 1. Campionamento
+        \node[chiamata] (c1) at (-2.6,-1.9) {%
+            $c^1$: \texttt{QA}(``Con quale altro nome è nota Pittsburgh?'')};
+        \node[chiamata] (c2) at (2.6,-1.9) {%
+            $c^2$: \texttt{QA}(``In quale nazione si trova Pittsburgh?'')};
 
-        \node[chiamata] (r1) at (5,-1.3) {$r_i^1$ = Città dell'Acciaio};
-        \node[chiamata] (r2) at (5,-2.9) {$r_i^2$ = Stati Uniti};
+        % 2. Esecuzione
+        \node[chiamata] (r1) at (-2.6,-3.5) {$r^1$ = Città dell'Acciaio};
+        \node[chiamata] (r2) at (2.6,-3.5)  {$r^2$ = Stati Uniti};
 
-        \node[tenuta]   (k1) at (10,-1.3) {$L_i^- - L_i^+ \geq \tau_f$\\ chiamata mantenuta};
-        \node[scartata] (k2) at (10,-2.9) {$L_i^- - L_i^+ < \tau_f$\\ chiamata scartata};
+        % 3. Filtraggio
+        \node[tenuta]   (k1) at (-2.6,-5.1) {Il risultato aiuta a predire il testo: chiamata \textbf{mantenuta}};
+        \node[scartata] (k2) at (2.6,-5.1)  {Il risultato non aiuta a predire il testo: chiamata \textbf{scartata}};
 
-        \node[testo, text width=5cm] (xs) at (15.5,-1.3) {%
-            \textbf{Testo $x^*$}, aggiunto a $\mathcal{C}^*$\\[2pt]
+        % Testo finale
+        \node[testo] (xs) at (0,-7.1) {%
+            \textbf{Testo arricchito}\\[2pt]
             Pittsburgh è anche nota come \texttt{[QA(}``Con quale altro nome è nota Pittsburgh?''\texttt{) -> Città dell'Acciaio]} la Città dell'Acciaio.};
 
+        % Etichette delle fasi
+        \node[fase] at (-5.3,-1.9) {1. Campio-\\namento};
+        \node[fase] at (-5.3,-3.5) {2. Esecuzione};
+        \node[fase] at (-5.3,-5.1) {3. Filtraggio};
+
+        % Frecce
         \draw[arrow] (x) -- (c1);
         \draw[arrow] (x) -- (c2);
         \draw[arrow] (c1) -- (r1);
@@ -308,40 +279,216 @@ ossia se il risultato dello strumento riduce la perdita di almeno una soglia $\t
         \draw[arrow] (r1) -- (k1);
         \draw[arrow] (r2) -- (k2);
         \draw[arrow] (k1) -- (xs);
-    \end{tikzpicture}%
-    }
-    \caption{Costruzione del dataset di addestramento di Toolformer, adattato da Schick et al.\ \cite{schick2023toolformer}. Il modello propone due chiamate a uno strumento di question answering; entrambe vengono eseguite, ma soltanto la prima, il cui risultato aiuta a predire il testo che segue, supera il filtraggio e viene inserita nel testo.}
+    \end{tikzpicture}
+    \caption{Costruzione del dataset di addestramento di Toolformer, adattato da Schick et al.\ \cite{schick2023toolformer}. Il modello propone due chiamate a uno strumento di question answering; entrambe vengono eseguite, ma solo la prima, il cui risultato aiuta a predire il testo che segue, supera il filtraggio e viene inserita nel testo.}
     \label{fig:toolformer}
 \end{figure}
 
-\subsubsection{Addestramento e inferenza}
+Le chiamate che passano il filtro vengono inserite nel testo nel punto in cui erano state proposte. Ripetendo la procedura su tutto il corpus e per tutti gli strumenti si ottiene un nuovo dataset, su cui si esegue il fine-tuning del modello con il solito obiettivo di predizione del token successivo. I testi sono gli stessi del corpus di partenza, con in più le chiamate, per cui il modello impara a usare gli strumenti senza perdere le capacità generali.
 
-Le chiamate che superano il filtraggio vengono inserite nel testo originale, nella posizione in cui erano state proposte:
-\[
-x^* = x_{1:i-1} \oplus e(c_i, r_i) \oplus x_{i:n}
-\]
-Ripetendo il procedimento per tutti gli strumenti e per tutti i testi del corpus si ottiene il dataset arricchito $\mathcal{C}^*$, sul quale il modello viene sottoposto a fine-tuning con l'obiettivo standard dei modelli di linguaggio, ossia la predizione del token successivo:
-\[
-\theta^* = \arg\min_{\theta} \; - \sum_{x^* \in \mathcal{C}^*} \; \sum_{t=1}^{|x^*|} \log p_\theta\big(x^*_t \mid x^*_{<t}\big)
-\]
-Poiché $\mathcal{C}^*$ contiene esattamente gli stessi testi di $\mathcal{C}$, a meno delle chiamate inserite, il modello impara a usare gli strumenti senza perdere le proprie capacità generali di modellazione del linguaggio.
+Durante l'inferenza il modello genera normalmente finché non produce il token ``$\rightarrow$''. A quel punto la generazione si ferma, la chiamata viene eseguita, il risultato viene aggiunto al testo e la generazione riparte. Il risultato fa quindi parte del contesto e influenza i token successivi, in modo simile ai passaggi intermedi di Chain-of-Thought.
 
-In fase di inferenza, il modello genera il testo normalmente. Quando produce il token ``$\rightarrow$'', segnalando di attendere il risultato di una chiamata, la generazione viene sospesa: la chiamata viene eseguita, il risultato viene inserito nel testo insieme al token di chiusura, e la generazione riprende. Il risultato entra così a far parte del contesto e condiziona i token successivi, esattamente come i passaggi intermedi di Chain-of-Thought.
-
-\subsubsection{Risultati}
-
-Nel lavoro originale, il metodo viene applicato al modello GPT-J da 6,7 miliardi di parametri \cite{wang2021gptj}, con cinque strumenti: un sistema di question answering, una calcolatrice, un motore di ricerca su Wikipedia, un sistema di traduzione automatica e un calendario che restituisce la data corrente. Il modello risultante migliora in modo sostanziale rispetto a GPT-J su numerosi compiti valutati in modalità zero-shot, risultando spesso competitivo con modelli molto più grandi, come GPT-3 da 175 miliardi di parametri, e superandoli nettamente sui problemi matematici, grazie al ricorso alla calcolatrice \cite{schick2023toolformer}. Anche in questo caso la capacità ha natura emergente: i benefici dell'uso degli strumenti compaiono soltanto a partire da modelli di circa 775 milioni di parametri, mentre i modelli più piccoli non riescono a sfruttarli.
-
-Oggi l'uso di strumenti non richiede più una procedura di questo tipo: i modelli più recenti sono addestrati a supportarlo in modo nativo. Il modello riceve la descrizione degli strumenti disponibili, con il loro nome, lo scopo e lo schema dei parametri, e quando lo ritiene utile produce una chiamata strutturata, che l'applicazione esegue restituendogli il risultato. È questo il meccanismo su cui si basano anche gli agenti realizzati con LangChain nel progetto descritto in questa tesi.
+Con i modelli più recenti una procedura del genere non è più necessaria, perché sono addestrati a usare strumenti in modo nativo (\emph{tool calling}). Al modello vengono passati nome, scopo e schema dei parametri degli strumenti disponibili; quando lo ritiene utile, il modello genera una chiamata strutturata, che l'applicazione esegue restituendogli poi il risultato. Anche gli agenti sviluppati con LangChain nel progetto di questa tesi si basano su questo meccanismo.
 
 \subsubsection{Limiti: azioni isolate}
 
-Gli stessi autori individuano alcuni limiti del metodo \cite{schick2023toolformer}. Il principale è che le chiamate sono \emph{isolate}: poiché i dati di addestramento vengono generati indipendentemente per ciascuno strumento, il modello non impara a concatenare più strumenti, utilizzando il risultato di uno come input per un altro. Inoltre, le chiamate non sono \emph{interattive}: il modello invia una richiesta e ne riceve il risultato, ma non può, ad esempio, esaminare i risultati di una ricerca e riformulare la domanda se non sono soddisfacenti. Infine, la decisione di invocare uno strumento resta implicita: il modello non esplicita perché una chiamata sia necessaria né come il suo risultato debba essere utilizzato.
+Gli autori stessi indicano alcuni limiti del metodo \cite{schick2023toolformer}. Il più importante è che le chiamate sono isolate: i dati di addestramento sono generati separatamente per ogni strumento, quindi il modello non impara a usare il risultato di uno strumento come input di un altro. Le chiamate inoltre non sono interattive, nel senso che il modello invia una richiesta e riceve un risultato, ma non può ad esempio esaminare i risultati di una ricerca e riformulare la domanda se non sono soddisfacenti. A questi si può aggiungere un ulteriore limite, non discusso nel lavoro originale: la scelta di chiamare uno strumento resta implicita, e il modello non dice perché la chiamata serve né come userà il risultato.
 
-Chain-of-Thought e Toolformer affrontano quindi i due limiti degli LLM separatamente: il primo fornisce un ragionamento esplicito ma chiuso sulla conoscenza del modello, il secondo un accesso all'esterno privo di un ragionamento esplicito che lo guidi. Per affrontare compiti in cui è necessario raccogliere informazioni in più passaggi, decidendo di volta in volta quale sia il passo successivo sulla base di quanto osservato, occorre unire le due capacità in un unico ciclo.
+In sintesi, Chain-of-Thought e Toolformer affrontano i due limiti degli LLM separatamente. Il primo dà al modello un ragionamento esplicito, ma limitato a ciò che il modello sa; il secondo gli dà accesso all'esterno, ma senza un ragionamento che ne guidi l'uso. Molti compiti richiedono però di raccogliere informazioni in più passaggi, scegliendo ogni volta il passo successivo in base a ciò che si è appena osservato, e per questi servono entrambe le capacità all'interno dello stesso ciclo.
+
 \subsection{L'unione di ragionamento e azione: ReAct}
+\label{sec:react}
 
+ReAct (\emph{Reasoning and Acting}) \cite{yao2023react} mette insieme le due capacità in un unico ciclo, in cui il modello alterna \emph{pensieri}, ovvero passaggi di ragionamento in linguaggio naturale, e \emph{azioni} sull'ambiente esterno, osservandone ogni volta il risultato. A differenza di Toolformer non serve alcun addestramento, dato che il comportamento si ottiene solo con few-shot prompting a partire da pochi esempi scritti a mano.
 
-\section{Definizione di Agent e componenti tipici}
+\subsubsection{Formulazione}
+
+Yao et al.\ formulano il problema in termini di un agente che interagisce con un ambiente. Al passo $t$ l'agente riceve un'osservazione $o_t \in \mathcal{O}$ ed esegue un'azione $a_t \in \mathcal{A}$, scelta da una politica $\pi$ in base al \emph{contesto} $c_t$, che contiene tutta la storia dell'interazione:
+\[
+c_t = (o_1, a_1, \dots, o_{t-1}, a_{t-1}, o_t), \qquad a_t \sim \pi(a_t \mid c_t)
+\]
+Nei compiti complessi, per scegliere l'azione giusta può essere necessario mettere insieme informazioni sparse nella storia, pianificare i passi successivi o rendersi conto che un'azione precedente non ha avuto l'effetto previsto. ReAct affronta il problema aggiungendo allo spazio delle azioni lo spazio $\mathcal{L}$ del linguaggio naturale:
+\[
+\hat{\mathcal{A}} = \mathcal{A} \cup \mathcal{L}
+\]
+Un'azione $\hat{a}_t \in \mathcal{L}$ è un \emph{pensiero}, che non produce osservazioni e aggiunge soltanto un passaggio di ragionamento al contesto. Il contesto si aggiorna quindi in due modi diversi:
+\[
+c_{t+1} =
+\begin{cases}
+(c_t, \hat{a}_t) & \text{se } \hat{a}_t \in \mathcal{L} \quad \text{(pensiero)} \\[2pt]
+(c_t, \hat{a}_t, o_{t+1}) & \text{se } \hat{a}_t \in \mathcal{A} \quad \text{(azione sull'ambiente)}
+\end{cases}
+\]
+La politica $\pi$ è un LLM a cui viene fornito un prompt $\mathcal{P}_{\text{ReAct}}$ con alcuni esempi di traiettorie complete, composte da pensieri, azioni e osservazioni:
+\[
+\pi(\hat{a}_t \mid c_t) = p_\theta\big(\hat{a}_t \mid \mathcal{P}_{\text{ReAct}} \oplus c_t\big)
+\]
+Ogni volta che il modello produce un'azione, la generazione si interrompe, l'azione viene eseguita, l'osservazione viene aggiunta al contesto e la generazione riprende. Il ciclo termina quando il modello produce l'azione finale con la risposta oppure quando si raggiunge il numero massimo di passi (Algoritmo~\ref{alg:react}).
+
+\begin{algorithm}[htbp]
+\caption{Ciclo ReAct}
+\label{alg:react}
+\begin{algorithmic}[1]
+\Function{ReAct}{$domanda$, $T_{\max}$}
+    \State $c \gets domanda$
+    \For{$t = 1, \dots, T_{\max}$}
+        \State $\hat{a}_t \sim p_\theta(\,\cdot \mid \mathcal{P}_{\text{ReAct}} \oplus c)$ \Comment{pensiero o azione}
+        \If{$\hat{a}_t \in \mathcal{L}$} \Comment{pensiero}
+            \State $c \gets c \oplus \hat{a}_t$
+        \ElsIf{$\hat{a}_t$ è l'azione terminale \texttt{Finish}[$y$]}
+            \State \Return $y$
+        \Else \Comment{azione sull'ambiente}
+            \State $o_{t+1} \gets$ \Call{Esegui}{$\hat{a}_t$}
+            \State $c \gets c \oplus \hat{a}_t \oplus o_{t+1}$
+        \EndIf
+    \EndFor
+    \State \Return nessuna risposta \Comment{limite di passi raggiunto}
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+In Figura~\ref{fig:react-esempio} è riportata una traiettoria presa dal lavoro originale, relativa a una domanda che richiede di combinare informazioni di più pagine di Wikipedia. Tra le azioni disponibili ci sono \texttt{Search[entità]}, che restituisce l'inizio della pagina Wikipedia corrispondente (o, se la pagina non esiste, un elenco di pagine con titolo simile), e \texttt{Finish[risposta]}, che chiude il compito.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        passo/.style={draw, rounded corners, text width=0.86\linewidth, align=left, font=\footnotesize, inner sep=5pt},
+        pensiero/.style={passo, fill=blue!5},
+        azione/.style={passo, fill=yellow!15},
+        osservazione/.style={passo, fill=gray!12},
+        risposta/.style={passo, fill=green!10}
+    ]
+        \node[passo, fill=white] (q) {%
+            \textbf{Domanda:} oltre all'Apple Remote, quale altro dispositivo può controllare il programma con cui l'Apple Remote era stato originariamente progettato per interagire?};
+        \node[pensiero, below=3pt of q] (t1) {%
+            \textbf{Pensiero 1:} devo cercare Apple Remote e trovare il programma con cui era stato originariamente progettato per interagire.};
+        \node[azione, below=3pt of t1] (a1) {\textbf{Azione 1:} \texttt{Search[Apple Remote]}};
+        \node[osservazione, below=3pt of a1] (o1) {%
+            \textbf{Osservazione 1:} l'Apple Remote è un telecomando introdotto da Apple nell'ottobre 2005 [\ldots] originariamente progettato per controllare il programma di media center Front Row [\ldots]};
+        \node[pensiero, below=3pt of o1] (t2) {%
+            \textbf{Pensiero 2:} l'Apple Remote era stato progettato per controllare Front Row. Devo cercare Front Row e trovare quale altro dispositivo può controllarlo.};
+        \node[azione, below=3pt of t2] (a2) {\textbf{Azione 2:} \texttt{Search[Front Row]}};
+        \node[osservazione, below=3pt of a2] (o2) {%
+            \textbf{Osservazione 2:} impossibile trovare [Front Row]. Pagine simili: [`Front Row Seat to Earth', `Front Row Motorsports', `Front Row (software)', \ldots]};
+        \node[pensiero, below=3pt of o2] (t3) {%
+            \textbf{Pensiero 3:} Front Row non è stato trovato. Devo cercare Front Row (software).};
+        \node[azione, below=3pt of t3] (a3) {\textbf{Azione 3:} \texttt{Search[Front Row (software)]}};
+        \node[osservazione, below=3pt of a3] (o3) {%
+            \textbf{Osservazione 3:} Front Row è un software di media center non più sviluppato [\ldots] controllabile tramite l'Apple Remote o i tasti funzione della tastiera.};
+        \node[pensiero, below=3pt of o3] (t4) {%
+            \textbf{Pensiero 4:} Front Row è controllabile tramite l'Apple Remote o i tasti funzione della tastiera. La risposta è quindi: i tasti funzione della tastiera.};
+        \node[risposta, below=3pt of t4] (a4) {\textbf{Azione 4:} \texttt{Finish[tasti funzione della tastiera]}};
+    \end{tikzpicture}
+    \caption{Traiettoria ReAct su una domanda tratta da HotpotQA, adattata da Yao et al.\ \cite{yao2023react}. Pensieri (in blu), azioni (in giallo) e osservazioni (in grigio) si alternano. Al passo 2 la ricerca fallisce: il modello analizza l'osservazione, individua tra le pagine suggerite quella corretta e riformula l'azione.}
+    \label{fig:react-esempio}
+\end{figure}
+
+\subsubsection{Perché l'alternanza funziona}
+
+Secondo Yao et al.\ ragionamento e azione si aiutano a vicenda in due direzioni.
+
+Nella prima, \emph{ragionare per agire} (\emph{reason to act}), sono i pensieri a guidare le azioni. Servono a scomporre il compito in obiettivi intermedi (nel Pensiero 1 il modello decide di identificare prima il programma e solo dopo cercare quali dispositivi lo controllano), a tenere traccia dei progressi e a gestire gli imprevisti. Nel Pensiero 3, dopo la ricerca fallita, il modello legge l'osservazione, trova tra le pagine suggerite quella giusta e corregge l'azione. Con Toolformer questo non sarebbe possibile, perché le chiamate sono isolate, mentre in ReAct ogni azione viene scelta tenendo conto dei risultati delle precedenti.
+
+Nella seconda, \emph{agire per ragionare} (\emph{act to reason}), sono le osservazioni a fornire al ragionamento informazioni esterne e verificabili. Tutti i fatti usati nella risposta finale provengono da pagine effettivamente consultate e non dalla memoria del modello, per cui il ragionamento non è più limitato alla conoscenza interna come in Chain-of-Thought (Sezione~\ref{sec:cot}). Inoltre la traiettoria mostra quali fonti sono state consultate e come sono state usate, e un lettore umano può controllare ogni passaggio.
+
+\subsubsection{Dal ciclo ReAct agli agenti}
+
+Il ciclo di ReAct, in cui il modello ragiona, agisce, osserva il risultato e decide il passo successivo, è qualcosa di più di una tecnica di prompting, perché descrive un sistema che persegue un obiettivo interagendo con l'esterno in modo iterativo e autonomo. Per questo motivo ReAct è diventato il riferimento per gli agenti basati su LLM. Nei sistemi attuali le azioni sono implementate con il tool calling nativo visto nella Sezione~\ref{sec:toolformer} e il ciclo è gestito dai framework di sviluppo. Rispetto al ReAct originale, inoltre, i pensieri espliciti sono facoltativi e il modello può chiamare direttamente uno strumento.
+
+Gli agenti di questa tesi, realizzati con la funzione \texttt{create\_agent} di LangChain \cite{langchainoverview}, funzionano allo stesso modo. Il modello viene invocato più volte e a ogni invocazione può chiedere l'esecuzione di uno o più strumenti; i risultati vengono aggiunti al contesto prima dell'invocazione successiva, e il ciclo si ferma quando il modello risponde senza richiedere altri strumenti. In sostanza si tratta del ciclo dell'Algoritmo~\ref{alg:react}.
+
+Rimane da chiarire che cosa si intenda esattamente per agente e quali componenti, oltre al ciclo di ragionamento e azione, ne determinino il comportamento. Questi aspetti sono trattati nella sezione seguente.
+
+\section{Definizione di agente e componenti tipici}
 \label{sec:definizione-agent}
-Definisco cos'è un agente, quali componenti lo definiscono  
+
+Nelle sezioni precedenti si è visto come un LLM possa ragionare in modo esplicito, usare strumenti esterni e, con ReAct, alternare le due cose in un ciclo. A questo punto si può definire il concetto di agente e chiarire la differenza con un LLM, come anticipato all'inizio del capitolo.
+
+\subsection{Che cos'è un agente}
+
+Il concetto di agente è molto più vecchio degli LLM. Secondo la definizione classica di Russell e Norvig \cite{russell2020aima}, un agente è qualsiasi entità che \emph{percepisce} l'ambiente tramite sensori e \emph{agisce} su di esso tramite attuatori. Il suo comportamento è descritto da una \emph{funzione agente}, che a ogni sequenza di percezioni associa un'azione:
+\[
+f : \mathcal{O}^* \rightarrow \mathcal{A}
+\]
+dove $\mathcal{O}^*$ è l'insieme delle sequenze finite di osservazioni e $\mathcal{A}$ l'insieme delle azioni possibili. La definizione è molto generale: un termostato, un robot e un programma che opera su un sistema informatico sono tutti agenti, e cambiano l'ambiente in cui operano, ciò che possono percepire e le azioni disponibili.
+
+In un \emph{agente basato su LLM} questa funzione è realizzata da un modello di linguaggio. La formulazione è quella di ReAct vista nella Sezione~\ref{sec:react}: l'LLM sceglie l'azione $a_t$ in base al contesto $c_t$, che contiene la storia di osservazioni e azioni,
+\[
+a_t \sim p_\theta\big(\,\cdot \mid \mathcal{P}_{\text{agente}} \oplus c_t\big)
+\]
+dove $\mathcal{P}_{\text{agente}}$ è il prompt con la descrizione del compito, degli strumenti disponibili e del comportamento richiesto. Rispetto alla definizione classica ci sono due differenze: la funzione è probabilistica, e il contesto è espresso in linguaggio naturale invece che come sequenza di percezioni grezze.
+
+Questa definizione permette di distinguere chiaramente LLM e agente. L'LLM è un \emph{componente}, cioè un modello che dato un testo ne genera la continuazione. L'agente è invece un \emph{sistema} in cui l'LLM prende le decisioni, ma che include anche il ciclo di interazione con l'ambiente, gli strumenti con cui agire e la memoria in cui conservare informazioni nel tempo. Le differenze principali sono riassunte nella Tabella~\ref{tab:llm-agente}.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabular}{p{3.2cm} p{5cm} p{5cm}}
+        \hline
+        & \textbf{LLM} & \textbf{Agente basato su LLM} \\
+        \hline
+        Natura & Componente: un modello di linguaggio & Sistema: un LLM integrato con memoria, strumenti e ciclo di controllo \\
+        Obiettivo & Rispondere a una singola richiesta & Portare a termine un compito, anche in più passi \\
+        Flusso di esecuzione & Un'unica generazione, dall'input all'output & Ciclo iterativo, in cui il passo successivo dipende dall'esito dei precedenti \\
+        Stato & Nessuno al di fuori del contesto della richiesta & Memoria a breve e a lungo termine \\
+        Rapporto con l'esterno & Produce testo & Agisce sull'ambiente tramite strumenti e ne osserva gli effetti \\
+        \hline
+    \end{tabular}
+    \caption{Confronto tra un LLM e un agente basato su LLM.}
+    \label{tab:llm-agente}
+\end{table}
+
+\subsection{I componenti tipici}
+
+Wang et al.\ \cite{wang2024agentsurvey} hanno analizzato un gran numero di sistemi proposti in letteratura e ne hanno ricavato un'architettura comune, con quattro moduli organizzati intorno al modello (Figura~\ref{fig:componenti-agente}). Ognuno di essi corrisponde a uno degli elementi visti in questo capitolo.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        modulo/.style={draw, rounded corners, fill=blue!5, minimum width=2.8cm, minimum height=0.9cm, align=center, font=\small},
+        llm/.style={draw, rounded corners, fill=yellow!20, very thick, minimum width=2.4cm, minimum height=1.1cm, align=center, font=\small\bfseries},
+        ambiente/.style={draw, rounded corners, fill=gray!15, minimum width=4cm, minimum height=0.9cm, align=center, font=\small},
+        link/.style={{Stealth[length=2mm]}-{Stealth[length=2mm]}, thin},
+        arrow/.style={-{Stealth[length=3mm]}, thick},
+        lbl/.style={font=\footnotesize\itshape}
+    ]
+        \draw[dashed, rounded corners, gray] (-5.2,-2.7) rectangle (5.2,2.7);
+        \node[font=\small\itshape, gray!70!black, anchor=north west] at (-5.1,2.65) {Agente};
+
+        \node[llm]    (llm)  at (0,0)    {LLM};
+        \node[modulo] (prof) at (0,1.8)  {Profilo};
+        \node[modulo] (mem)  at (-3.5,0) {Memoria};
+        \node[modulo] (plan) at (3.5,0)  {Pianificazione};
+        \node[modulo] (act)  at (0,-1.8) {Azione};
+
+        \draw[link] (llm) -- (prof);
+        \draw[link] (llm) -- (mem);
+        \draw[link] (llm) -- (plan);
+        \draw[link] (llm) -- (act);
+
+        \node[ambiente] (env) at (0,-4.2) {Ambiente\\{\footnotesize strumenti, API, altri sistemi}};
+
+        \draw[arrow] (act) -- node[lbl, right] {azioni} (env);
+        \draw[arrow] (env.west) -| node[lbl, pos=0.5, below] {osservazioni} (mem.south);
+    \end{tikzpicture}
+    \caption{Architettura tipica di un agente basato su LLM, secondo la classificazione di Wang et al.\ \cite{wang2024agentsurvey}. L'LLM coordina i quattro moduli; il modulo di azione agisce sull'ambiente, le cui osservazioni vengono registrate nella memoria e rientrano nel contesto del modello.}
+    \label{fig:componenti-agente}
+\end{figure}
+
+\paragraph{Profilo.} Il profilo stabilisce l'identità dell'agente, cioè il ruolo, gli obiettivi, le regole di comportamento e lo stile delle risposte. Di solito è scritto in linguaggio naturale nel prompt di sistema, la parte di $\mathcal{P}_{\text{agente}}$ che precede l'interazione e la condiziona a ogni passo. Grazie al profilo, partendo dallo stesso LLM si possono costruire agenti specializzati in compiti diversi.
+
+\paragraph{Memoria.} La memoria conserva le informazioni raccolte durante l'interazione. Un LLM, infatti, non mantiene alcuno stato tra una richiesta e l'altra, e dispone solo del contesto della richiesta corrente. Si distinguono due livelli. La \emph{memoria a breve termine} è il contesto del modello, cioè la storia dell'interazione in corso (il $c_t$ di ReAct), ed è limitata dalla dimensione della finestra di contesto. La \emph{memoria a lungo termine} si trova invece in un archivio esterno, ad esempio un database, da cui le informazioni utili vengono recuperate e inserite nel contesto quando servono; in questo modo l'agente può conservare conoscenze ed esperienze anche tra interazioni diverse.
+
+\paragraph{Pianificazione.} La pianificazione riguarda il modo di affrontare un compito, cioè come scomporlo in sotto-obiettivi e in che ordine perseguirli. Wang et al.\ distinguono tra pianificazione \emph{senza retroazione}, in cui il piano viene definito interamente prima dell'esecuzione (come nella catena di ragionamento di Chain-of-Thought), e pianificazione \emph{con retroazione}, in cui il piano viene modificato in base alle osservazioni (come con i pensieri di ReAct). Solo la seconda permette all'agente di reagire agli imprevisti, come la ricerca fallita della Figura~\ref{fig:react-esempio}.
+
+\paragraph{Azione.} Il modulo di azione trasforma le decisioni dell'agente in operazioni sull'ambiente. Oggi le azioni sono quasi sempre chiamate a strumenti, secondo il meccanismo visto con Toolformer nella Sezione~\ref{sec:toolformer}: interrogare un motore di ricerca, eseguire codice, leggere o modificare dati tramite un'API. L'agente modifica lo stato del mondo esterno solo attraverso le azioni, e solo dalle loro osservazioni ne riceve informazioni.
+
+La stessa struttura si ritrova negli agenti sviluppati in questa tesi. Il profilo è definito dal prompt di sistema e la memoria a breve termine corrisponde allo stato del grafo LangGraph, mantenuto per ogni conversazione. Pianificazione con retroazione e azione sono gestite dal ciclo di \texttt{create\_agent}, in cui il modello chiama gli strumenti a sua disposizione e ne osserva i risultati.
+
+\subsection{Verso i sistemi multi-agente}
+
+Un singolo agente ha comunque un ambito limitato, perché profilo, strumenti e memoria sono pensati per una certa classe di compiti. I compiti più complessi si possono affrontare meglio dividendoli tra più agenti specializzati, ognuno responsabile di una parte del lavoro, che collaborano scambiandosi richieste e risultati. In questo caso si parla di \emph{sistemi multi-agente}.
+
+Far collaborare più agenti pone però un problema di interoperabilità. Gli agenti possono essere sviluppati da organizzazioni diverse, con framework e linguaggi diversi, e ognuno espone la propria logica con interfacce proprie. Per farli cooperare serve un protocollo comune che stabilisca come un agente possa scoprire le capacità di un altro, inviargli un compito, seguirne l'avanzamento e riceverne il risultato, senza conoscerne l'implementazione interna. Questo è l'obiettivo del protocollo Agent2Agent (A2A) \cite{a2aspec}, di cui si occupa il capitolo successivo.
+
+A2A va distinto dal Model Context Protocol (MCP) \cite{mcp2025spec}, un altro protocollo diffuso nello stesso periodo. I due lavorano a livelli diversi e sono complementari. MCP standardizza il modo in cui un agente accede a strumenti e risorse esterne, quindi riguarda il suo modulo di azione. A2A standardizza invece la comunicazione tra agenti distinti, che si trattano a vicenda come sistemi opachi: di un agente si conoscono le capacità, ma non il funzionamento interno.
