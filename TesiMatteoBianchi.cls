@@ -1,8 +1,6 @@
 
-
-
 \NeedsTeXFormat{LaTeX2e}[1995/12/01]
-\ProvidesPackage{TesiDiaUniroma3}[2023/11/06 v2.0 Tesi - DIA-Uniroma3]
+\ProvidesPackage{TesiMatteoBianchi}[2026/10/22 v2.0 Tesi - Matteo Bianchi]
 
 \LoadClass[a4paper,11pt,oneside,italian]{memoir}
 
