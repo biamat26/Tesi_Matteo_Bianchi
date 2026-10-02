@@ -1,1 +1,89 @@
+\chapter{Il protocollo Agent2Agent}
 \label{cap:protocollo-a2a}
+
+Alla fine del capitolo precedente si è visto che i compiti più complessi possono essere divisi tra più agenti specializzati, e che per farli collaborare serve un protocollo comune. Questo capitolo descrive il protocollo Agent2Agent (A2A), nato proprio con questo scopo. La Sezione~\ref{sec:perche-a2a} presenta il problema da cui nasce il protocollo e spiega perché gli standard già esistenti non erano adatti a risolverlo. La Sezione~\ref{sec:a2a-architettura} ne descrive l'architettura e gli oggetti principali, con particolare attenzione al ciclo di vita dei Task. La Sezione~\ref{sec:agent-executor} mostra infine come questo ciclo di vita viene gestito, nell'SDK Python ufficiale, dalla classe \texttt{AgentExecutor}, su cui si basa l'implementazione descritta nei capitoli successivi.
+
+\section{Perché A2A}
+\label{sec:perche-a2a}
+
+\subsection{Il problema dell'interoperabilità}
+
+Si consideri un'azienda che mette a disposizione dei propri dipendenti un agente di assistenza, sviluppato internamente con LangGraph. Un dipendente chiede all'agente di organizzargli una trasferta a Milano per la settimana successiva. L'agente conosce il calendario del dipendente e le regole aziendali sui rimborsi, ma non può prenotare voli e alberghi: questo servizio è offerto da un'agenzia viaggi esterna, che a sua volta lo gestisce con un proprio agente, sviluppato con un altro framework e in esecuzione sui server dell'agenzia. I due agenti sono stati progettati da organizzazioni diverse, in modo del tutto indipendente, e non hanno un modo comune per comunicare.
+
+Senza uno standard, per farli collaborare l'azienda dovrebbe scrivere un'integrazione su misura: studiare l'interfaccia esposta dall'agenzia, adattarsi al suo formato dei messaggi, capire come sapere se la prenotazione è andata a buon fine e come gestire il caso in cui l'agente dell'agenzia abbia bisogno di altre informazioni, ad esempio il budget massimo per l'albergo. Lo stesso lavoro andrebbe ripetuto per ogni altro agente con cui collaborare, e ogni integrazione sarebbe diversa dalle altre. Con $N$ agenti che devono comunicare tra loro si arriva fino a $N(N-1)/2$ integrazioni distinte, mentre con un protocollo comune ciascun agente deve implementarlo una sola volta.
+
+Dallo scenario si possono ricavare i requisiti che un protocollo di questo tipo deve soddisfare:
+
+\begin{itemize}
+    \item \textbf{Scoperta.} Un agente deve poter sapere quali capacità offre un altro agente e come contattarlo, senza dover leggere la sua documentazione.
+    \item \textbf{Delega e monitoraggio.} Un agente deve poter affidare un compito a un altro e sapere in ogni momento in che stato si trova.
+    \item \textbf{Compiti lunghi e interattivi.} Una prenotazione può richiedere minuti o anche ore, ad esempio se serve la conferma di un operatore umano. Durante l'esecuzione, inoltre, l'agente remoto può aver bisogno di altre informazioni da chi gli ha affidato il compito.
+    \item \textbf{Sicurezza.} Gli agenti appartengono spesso a organizzazioni diverse e devono potersi autenticare e verificare di essere autorizzati a usare un certo servizio.
+    \item \textbf{Opacità.} L'agenzia non ha interesse a rendere visibili i prompt, gli strumenti o i fornitori che usa il suo agente, e l'azienda non dovrebbe dipendere da questi dettagli. La collaborazione deve basarsi solo su ciò che un agente sa fare, non su come lo fa.
+\end{itemize}
+
+\subsection{Perché non basta MCP}
+
+Quando A2A è stato proposto esisteva già uno standard per collegare gli LLM a sistemi esterni, il Model Context Protocol (MCP), introdotto da Anthropic nel novembre 2024 \cite{anthropic2024mcp}. MCP definisce un'interfaccia uniforme, basata su JSON-RPC, con cui un'applicazione basata su LLM accede agli strumenti, ai dati e ai prompt messi a disposizione da un server. In teoria si potrebbe esporre l'agente dell'agenzia come un server MCP con uno strumento \texttt{prenota\_viaggio}. MCP però è stato progettato per il rapporto tra un agente e i suoi strumenti. Uno strumento ha un'interfaccia fissa, descritta da un nome e da uno schema dei parametri, riceve una chiamata e restituisce un risultato, ed è il client a decidere come e quando usarlo. Un agente remoto si comporta in modo diverso: riceve una richiesta in linguaggio naturale, decide da solo come soddisfarla, può chiedere chiarimenti o rifiutare il compito e porta avanti con il client un'interazione su più turni. Trattarlo come uno strumento vorrebbe dire ridurlo a una funzione e perdere proprio queste caratteristiche.\footnote{La revisione di novembre 2025 della specifica MCP ha introdotto, in forma sperimentale, i \emph{Tasks}, che permettono di eseguire in modo asincrono operazioni di lunga durata \cite{mcp2025spec}. In questo modo MCP si avvicina ad A2A nella gestione dei compiti lunghi, ma il modello di fondo resta quello del rapporto tra un client e uno strumento.}
+
+I due protocolli lavorano quindi a livelli diversi e possono essere usati insieme, come mostra la Figura~\ref{fig:a2a-mcp}. Ciascun agente usa MCP per accedere ai propri strumenti e A2A per comunicare con gli altri agenti. Nell'esempio, l'agente aziendale consulta il calendario tramite MCP e delega la prenotazione all'agente dell'agenzia tramite A2A; quest'ultimo, a sua volta, usa MCP per interrogare i sistemi delle compagnie aeree e degli alberghi, senza che l'agente aziendale ne sappia nulla.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        agente/.style={draw, rounded corners, fill=blue!8, very thick, minimum width=3.6cm, minimum height=1.3cm, align=center, font=\small},
+        strumento/.style={draw, rounded corners, fill=gray!12, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\footnotesize},
+        a2a/.style={{Stealth[length=3mm]}-{Stealth[length=3mm]}, very thick, blue!60!black},
+        mcp/.style={-{Stealth[length=2.5mm]}, thick, gray!70!black},
+        etichetta/.style={font=\footnotesize\bfseries, fill=white, inner sep=2pt}
+    ]
+        % Agenti
+        \node[agente] (cliente) at (0,0)   {\textbf{Agente aziendale}\\{\footnotesize LangGraph}};
+        \node[agente] (remoto)  at (7.2,0) {\textbf{Agente dell'agenzia}\\{\footnotesize altro framework}};
+
+        % Comunicazione tra agenti
+        \draw[a2a] (cliente) -- node[etichetta, text=blue!60!black] {A2A} (remoto);
+
+        % Strumenti dell'agente aziendale
+        \node[strumento] (cal) at (-1.25,-2.6) {Calendario};
+        \node[strumento] (reg) at (1.25,-2.6)  {Regole sui\\rimborsi};
+        \draw[mcp] (cliente) -- node[etichetta, text=gray!70!black] {MCP} (cal);
+        \draw[mcp] (cliente) -- node[etichetta, text=gray!70!black] {MCP} (reg);
+
+        % Strumenti dell'agente dell'agenzia
+        \node[strumento] (voli)   at (5.95,-2.6) {Compagnie\\aeree};
+        \node[strumento] (hotel)  at (8.45,-2.6) {Prenotazione\\alberghi};
+        \draw[mcp] (remoto) -- node[etichetta, text=gray!70!black] {MCP} (voli);
+        \draw[mcp] (remoto) -- node[etichetta, text=gray!70!black] {MCP} (hotel);
+
+        % Confini delle organizzazioni
+        \draw[dashed, rounded corners, gray] (-2.5,-3.4) rectangle (2.5,1.1);
+        \draw[dashed, rounded corners, gray] (4.7,-3.4) rectangle (9.7,1.1);
+        \node[font=\footnotesize\itshape, gray!70!black, anchor=north west] at (-2.45,1.05) {Azienda};
+        \node[font=\footnotesize\itshape, gray!70!black, anchor=north west] at (4.75,1.05) {Agenzia viaggi};
+    \end{tikzpicture}
+    \caption{Ruoli di A2A e MCP nello scenario d'esempio. Ogni agente accede ai propri strumenti tramite MCP, mentre i due agenti, che appartengono a organizzazioni diverse, comunicano tra loro tramite A2A senza conoscere gli strumenti l'uno dell'altro.}
+    \label{fig:a2a-mcp}
+\end{figure}
+
+\subsection{La nascita di A2A e i suoi principi}
+
+A2A è stato presentato da Google nell'aprile 2025, con il supporto di oltre cinquanta aziende partner \cite{google2025a2a}. Nel giugno dello stesso anno Google ha donato il progetto alla Linux Foundation, che da allora ne gestisce lo sviluppo come progetto open source con una governance neutrale; tra i membri fondatori, oltre a Google, ci sono AWS, Cisco, Microsoft, Salesforce, SAP e ServiceNow \cite{linuxfoundation2025a2a}. Dopo alcune versioni preliminari, nel marzo 2026 è stata pubblicata la versione 1.0 della specifica, la prima considerata stabile \cite{a2aspec}. Nel resto della tesi si fa riferimento a questa versione.
+
+La specifica dichiara cinque principi di progettazione \cite{a2aspec}, che corrispondono in buona parte ai requisiti visti in precedenza.
+
+\begin{itemize}
+    \item \textbf{Semplicità.} A2A non introduce nuove tecnologie, ma riusa standard già diffusi come HTTP, JSON-RPC 2.0 e Server-Sent Events. Così un agente può adottarlo con gli strumenti che già usa, indipendentemente dal framework con cui è sviluppato.
+    \item \textbf{Prontezza per l'uso aziendale.} Autenticazione, autorizzazione e monitoraggio si basano su meccanismi standard del web, come OAuth 2.0, e rispondono al requisito di sicurezza.
+    \item \textbf{Asincronia.} Il protocollo è pensato fin dall'inizio per compiti anche molto lunghi e per interazioni in cui serve l'intervento di un utente umano.
+    \item \textbf{Indipendenza dalla modalità.} Gli agenti possono scambiarsi testo, file e dati strutturati, e non solo messaggi testuali.
+    \item \textbf{Esecuzione opaca.} Gli agenti collaborano senza condividere il proprio stato interno, la memoria o gli strumenti. È il requisito di opacità, ed è la principale differenza rispetto al modello di MCP.
+\end{itemize}
+
+Il requisito di scoperta non compare tra i principi, ma è uno degli obiettivi dichiarati del protocollo ed è affidato all'Agent Card, un documento con cui ogni agente descrive le proprie capacità. L'Agent Card è il primo degli oggetti del protocollo descritti nella Sezione~\ref{sec:a2a-architettura}, insieme a Message, Task e Artifact.
+
+\section{Architettura e ciclo di vita dei Task}
+\label{sec:a2a-architettura}
+
+\section{Il ruolo di AgentExecutor nel ciclo di vita dei Task}
+\label{sec:agent-executor}

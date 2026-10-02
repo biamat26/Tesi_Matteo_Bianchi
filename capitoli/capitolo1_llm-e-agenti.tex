@@ -66,16 +66,27 @@ n-gram con reti neurali addestrate a predire la parola successiva. Una delle inn
 e continuo, appreso automaticamente durante l'addestramento, in modo tale che parole con significato o utilizzo simile siano 
 rappresentate da vettori vicini nello spazio degli embedding. Questo supera uno dei limiti principali dei modelli n-gram, 
 che trattano ogni parola come un simbolo discreto e indipendente, incapace di catturare relazioni semantiche tra termini diversi.
-L'architettura più utilizzata in questa fase è la Recurrent Neural Network (RNN), che elabora la sequenza una parola alla volta, mantenendo
+L'architettura più utilizzata in questa fase è la Recurrent Neural Network (RNN), che elabora la sequenza, una parola alla volta, mantenendo
  uno stato interno (\emph{hidden state}) aggiornato a ogni passo in base alla parola corrente e allo stato precedente. 
  Da questo stato viene stimata la probabilità della parola successiva. A differenza degli n-gram, limitati a una finestra fissa di $n-1$ parole,
   l'\emph{hidden state} può in linea di principio riassumere l'intera sequenza osservata fino a quel momento. In pratica però, le RNN faticano
    a conservare informazioni su sequenze lunghe a causa del \emph{vanishing gradient}; varianti come le Long Short-Term Memory (LSTM) attenuano
  il problema ma non lo eliminano del tutto.
 \subsection{Pre-Trained Language Model (PLM)}
-Un ulteriore salto avviene con i modelli di linguaggio pre-addestrati (Pre-trained Language Model, PLM), che introducono il concetto del pre-training seguito da fine-tuning: il modello viene prima addestrato su grandi quantità di testo non etichettato per apprendere una rappresentazione generale del linguaggio, e successivamente specializzato su compiti specifici tramite un ulteriore addestramento su un dataset etichettato di dimensioni molto più contenute.
-Un primo tentativo in questa direzione viene fatto da ELMo \cite{peters2018elmo} che propone di ottenere rappresentazioni delle parole sensibili al contesto pre-addestrando una rete bidirectional LSTM (biLSTM): a differenza delle rappresentazioni distribuite statiche introdotte dai NLM (come word2vec), in cui ogni parola è associata a un unico vettore fisso indipendentemente dal contesto in cui compare, ELMo genera una rappresentazione diversa per la stessa parola a seconda della frase in cui è inserita, combinando gli stati nascosti della biLSTM applicata in entrambe le direzioni della sequenza.
-Il salto decisivo avviene però con BERT (Bidirectional Encoder Representations from Transformers) \cite{devlin2018bert}, che abbandona le reti ricorrenti in favore di un'architettura basata sul meccanismo di attenzione \cite{vaswani2017attention}, più efficiente e parallelizzabile. BERT viene pre-addestrato con il \emph{masked language modeling} (MLM): una parte dei token in input (il 15\% nel lavoro originale) viene mascherata, tipicamente sostituendola con il token speciale \texttt{[MASK]}, e il modello deve ricostruire i token originali usando il contesto sia a sinistra sia a destra:
+Un ulteriore salto avviene con i modelli di linguaggio pre-addestrati (Pre-trained Language Model, PLM),
+ che introducono il concetto del pre-training seguito da fine-tuning: il modello viene prima addestrato su grandi quantità di testo
+  non etichettato per apprendere una rappresentazione generale del linguaggio, e successivamente specializzato su compiti specifici 
+  tramite un ulteriore addestramento su un dataset etichettato di dimensioni molto più contenute.
+Un primo tentativo in questa direzione viene fatto da ELMo \cite{peters2018elmo} che propone di ottenere rappresentazioni delle parole
+ sensibili al contesto pre-addestrando una rete bidirectional LSTM (biLSTM): a differenza delle rappresentazioni distribuite statiche 
+ introdotte dai NLM (come word2vec), in cui ogni parola è associata a un unico vettore fisso indipendentemente dal contesto in cui 
+ compare, ELMo genera una rappresentazione diversa per la stessa parola a seconda della frase in cui è inserita, combinando gli 
+ stati nascosti della biLSTM applicata in entrambe le direzioni della sequenza.
+Il salto decisivo avviene però con BERT (Bidirectional Encoder Representations from Transformers) \cite{devlin2018bert}, che 
+abbandona le reti ricorrenti in favore di un'architettura basata sul meccanismo di attenzione \cite{vaswani2017attention}, più
+ efficiente e parallelizzabile. BERT viene pre-addestrato con il \emph{masked language modeling} (MLM): una parte dei token
+  in input (il 15\% nel lavoro originale) viene mascherata, tipicamente sostituendola con il token speciale \texttt{[MASK]}, e
+   il modello deve ricostruire i token originali usando il contesto sia a sinistra sia a destra:
 
 \[
 \mathcal{L}_{\text{MLM}} = - \sum_{i \in \mathcal{M}} \log P(w_i \mid w_{\setminus \mathcal{M}})
@@ -83,7 +94,7 @@ Il salto decisivo avviene però con BERT (Bidirectional Encoder Representations 
 
 dove $\mathcal{M}$ indica l'insieme delle posizioni mascherate e $w_{\setminus \mathcal{M}}$ la sequenza di input privata dei token mascherati. A differenza della predizione della parola successiva vista in precedenza, che sfrutta solo il contesto a sinistra, questo obiettivo di pre-training permette al modello di condizionare la propria previsione sull'intero contesto della frase.
 
-Una volta completato il pre-training, il modello viene adattato a uno specifico compito finale (come la classificazione del testo o il question answering). A tal fine, si integra uno strato dedicato al task al di sopra delle rappresentazioni pre-addestrate e si affinano i pesi dell'intera architettura -- o, in alternativa, del solo nuovo strato -- su un dataset etichettato di dimensioni contenute. Questa seconda fase prende il nome di fine-tuning. Il paradigma basato su pre-training e fine-tuning ha consentito di raggiungere prestazioni allo stato dell'arte in un ampio spettro di applicazioni del linguaggio naturale, riducendo drasticamente il fabbisogno di dati etichettati rispetto all'addestramento ex novo di un modello dedicato.
+Una volta completato il pre-training, il modello viene adattato a uno specifico compito finale (come la classificazione del testo o il question answering). A tal fine, si integra uno strato dedicato al task al di sopra delle rappresentazioni pre-addestrate e si affinano i pesi dell'intera architettura — o, in alternativa, del solo nuovo strato — su un dataset etichettato di dimensioni contenute. Questa seconda fase prende il nome di fine-tuning. Il paradigma basato su pre-training e fine-tuning ha consentito di raggiungere prestazioni allo stato dell'arte in un ampio spettro di applicazioni del linguaggio naturale, riducendo drasticamente il fabbisogno di dati etichettati rispetto all'addestramento ex novo di un modello dedicato.
 
 \subsection{Large Language Model (LLM)}
 Infine, l'osservazione secondo cui l'aumento della dimensione del modello, dei dati di addestramento e della quantità di calcolo impiegata porta a un miglioramento prevedibile delle prestazioni -- un fenomeno noto come scaling law -- ha spinto i ricercatori a esplorare i limiti di questo effetto, addestrando PLM di dimensioni sempre maggiori, fino a raggiungere ordini di grandezza di decine o centinaia di miliardi di parametri (ad esempio, i 175 miliardi di parametri di GPT-3 o i 540 miliardi di PaLM) \cite{zhao2023survey}.
@@ -379,7 +390,7 @@ In Figura~\ref{fig:react-esempio} è riportata una traiettoria presa dal lavoro 
             \textbf{Pensiero 4:} Front Row è controllabile tramite l'Apple Remote o i tasti funzione della tastiera. La risposta è quindi: i tasti funzione della tastiera.};
         \node[risposta, below=3pt of t4] (a4) {\textbf{Azione 4:} \texttt{Finish[tasti funzione della tastiera]}};
     \end{tikzpicture}
-    \caption{Traiettoria ReAct su una domanda tratta da HotpotQA \cite{yang2018hotpotqa}, adattata da Yao et al.\ \cite{yao2023react}. Pensieri (in blu), azioni (in giallo) e osservazioni (in grigio) si alternano. Al passo 2 la ricerca fallisce: il modello analizza l'osservazione, individua tra le pagine suggerite quella corretta e riformula l'azione.}
+    \caption{Traiettoria ReAct su una domanda tratta da HotpotQA, adattata da Yao et al.\ \cite{yao2023react}. Pensieri (in blu), azioni (in giallo) e osservazioni (in grigio) si alternano. Al passo 2 la ricerca fallisce: il modello analizza l'osservazione, individua tra le pagine suggerite quella corretta e riformula l'azione.}
     \label{fig:react-esempio}
 \end{figure}
 
@@ -410,7 +421,7 @@ Il concetto di agente è molto più vecchio degli LLM. Secondo la definizione cl
 \[
 f : \mathcal{O}^* \rightarrow \mathcal{A}
 \]
-dove $\mathcal{O}^*$ è l'insieme delle sequenze finite di osservazioni e $\mathcal{A}$ l'insieme delle azioni possibili. La definizione è molto generale: un termostato, un robot e un programma che opera su un sistema informatico sono tutti agenti, e differiscono per l'ambiente in cui operano, per ciò che possono percepire e per le azioni disponibili.
+dove $\mathcal{O}^*$ è l'insieme delle sequenze finite di osservazioni e $\mathcal{A}$ l'insieme delle azioni possibili. La definizione è molto generale: un termostato, un robot e un programma che opera su un sistema informatico sono tutti agenti, e cambiano l'ambiente in cui operano, ciò che possono percepire e le azioni disponibili.
 
 In un \emph{agente basato su LLM} questa funzione è realizzata da un modello di linguaggio. La formulazione è quella di ReAct vista nella Sezione~\ref{sec:react}: l'LLM sceglie l'azione $a_t$ in base al contesto $c_t$, che contiene la storia di osservazioni e azioni,
 \[
