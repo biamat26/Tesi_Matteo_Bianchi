@@ -23,7 +23,7 @@ Dallo scenario si possono ricavare i requisiti che un protocollo di questo tipo 
 
 \subsection{Perché non basta MCP}
 
-Quando A2A è stato proposto esisteva già uno standard per collegare gli LLM a sistemi esterni, il Model Context Protocol (MCP), introdotto da Anthropic nel novembre 2024 \cite{anthropic2024mcp}. MCP definisce un'interfaccia uniforme, basata su JSON-RPC, con cui un'applicazione basata su LLM accede agli strumenti, ai dati e ai prompt messi a disposizione da un server. In teoria si potrebbe esporre l'agente dell'agenzia come un server MCP con uno strumento \texttt{prenota\_viaggio}. MCP però è stato progettato per il rapporto tra un agente e i suoi strumenti. Uno strumento ha un'interfaccia fissa, descritta da un nome e da uno schema dei parametri, riceve una chiamata e restituisce un risultato, ed è il client a decidere come e quando usarlo. Un agente remoto si comporta in modo diverso: riceve una richiesta in linguaggio naturale, decide da solo come soddisfarla, può chiedere chiarimenti o rifiutare il compito e porta avanti con il client un'interazione su più turni. Trattarlo come uno strumento vorrebbe dire ridurlo a una funzione e perdere proprio queste caratteristiche.\footnote{La revisione di novembre 2025 della specifica MCP ha introdotto, in forma sperimentale, i \emph{Tasks}, che permettono di eseguire in modo asincrono operazioni di lunga durata \cite{mcp2025spec}. In questo modo MCP si avvicina ad A2A nella gestione dei compiti lunghi, ma il modello di fondo resta quello del rapporto tra un client e uno strumento.}
+Quando A2A è stato proposto esisteva già uno standard per collegare gli LLM a sistemi esterni, il Model Context Protocol (MCP), introdotto da Anthropic nel novembre 2024 \cite{anthropic2024mcp}. MCP definisce un'interfaccia uniforme, basata su JSON-RPC, con cui un'applicazione basata su LLM accede agli strumenti, ai dati e ai prompt messi a disposizione da un server. In teoria si potrebbe esporre l'agente dell'agenzia come un server MCP con uno strumento \texttt{prenota\_\allowbreak viaggio}. MCP però è stato progettato per il rapporto tra un agente e i suoi strumenti. Uno strumento ha un'interfaccia fissa, descritta da un nome e da uno schema dei parametri, riceve una chiamata e restituisce un risultato, ed è il client a decidere come e quando usarlo. Un agente remoto si comporta in modo diverso: riceve una richiesta in linguaggio naturale, decide da solo come soddisfarla, può chiedere chiarimenti o rifiutare il compito e porta avanti con il client un'interazione su più turni. Trattarlo come uno strumento vorrebbe dire ridurlo a una funzione e perdere proprio queste caratteristiche.\footnote{La revisione di novembre 2025 della specifica MCP ha introdotto, in forma sperimentale, i \emph{Tasks}, che permettono di eseguire in modo asincrono operazioni di lunga durata \cite{mcp2025spec}. In questo modo MCP si avvicina ad A2A nella gestione dei compiti lunghi, ma il modello di fondo resta quello del rapporto tra un client e uno strumento.}
 
 I due protocolli lavorano quindi a livelli diversi e possono essere usati insieme, come mostra la Figura~\ref{fig:a2a-mcp}. Ciascun agente usa MCP per accedere ai propri strumenti e A2A per comunicare con gli altri agenti. Nell'esempio, l'agente aziendale consulta il calendario tramite MCP e delega la prenotazione all'agente dell'agenzia tramite A2A; quest'ultimo, a sua volta, usa MCP per interrogare i sistemi delle compagnie aeree e degli alberghi, senza che l'agente aziendale ne sappia nulla.
 
@@ -83,6 +83,303 @@ Il requisito di scoperta non compare tra i principi, ma è uno degli obiettivi d
 
 \section{Architettura e ciclo di vita dei Task}
 \label{sec:a2a-architettura}
+
+Questa sezione descrive come funziona il protocollo. Si parte dagli attori coinvolti in un'interazione e dall'Agent Card, con cui un agente si presenta agli altri; si passa poi agli oggetti che due agenti si scambiano (Message, Task e Artifact) e alle operazioni con cui li manipolano. L'ultima parte è dedicata al ciclo di vita dei Task, che è il punto centrale del protocollo e la base per la Sezione~\ref{sec:agent-executor}.
+
+La specifica è organizzata in tre livelli \cite{a2aspec}. Il primo è il \emph{modello dei dati}, cioè gli oggetti del protocollo e i loro campi, definiti formalmente in un file Protocol Buffers. Il secondo sono le \emph{operazioni astratte}, descritte senza fare riferimento a un trasporto specifico. Il terzo sono i \emph{binding di trasporto}, che stabiliscono come le operazioni vengono effettivamente inviate in rete: la versione 1.0 ne prevede tre, JSON-RPC 2.0, gRPC e HTTP+JSON (REST), e richiede che siano funzionalmente equivalenti. Questa sezione si occupa dei primi due livelli; gli esempi usano la serializzazione JSON, in cui i nomi dei campi sono scritti in \emph{camelCase} (ad esempio \texttt{contextId}).
+
+\subsection{Gli attori}
+
+In un'interazione A2A compaiono tre attori:
+
+\begin{itemize}
+    \item \textbf{l'utente}, cioè la persona o il sistema che ha bisogno che un compito venga svolto. Nello scenario della Sezione~\ref{sec:perche-a2a} è il dipendente che chiede di organizzare la trasferta;
+    \item \textbf{il client A2A} (o \emph{client agent}), che agisce per conto dell'utente e invia le richieste a un altro agente. Nell'esempio è l'agente aziendale;
+    \item \textbf{il server A2A} (o \emph{remote agent}), che espone un endpoint conforme al protocollo, riceve le richieste e le elabora. Nell'esempio è l'agente dell'agenzia viaggi.
+\end{itemize}
+
+I ruoli di client e server dipendono dalla singola interazione e non dall'agente. Se per completare la prenotazione l'agente dell'agenzia dovesse a sua volta rivolgersi all'agente di una compagnia aerea, in quella seconda interazione sarebbe lui il client. In questo modo si possono costruire catene di agenti di lunghezza qualsiasi usando sempre lo stesso protocollo.
+
+\subsection{L'Agent Card}
+
+Prima di affidare un compito a un agente remoto, il client deve sapere che cosa sa fare, dove contattarlo e come autenticarsi. Queste informazioni sono contenute nell'\emph{Agent Card}, un documento JSON che ogni server A2A pubblica per descrivere sé stesso. La specifica prevede tre modi per ottenerla \cite{a2aspec}:
+
+\begin{itemize}
+    \item da un indirizzo standard sul dominio dell'agente, stabilito secondo la convenzione degli URI \emph{well-known} della RFC~8615: \texttt{/.well-known/\allowbreak agent-card.json};
+    \item da un registro o catalogo che raccoglie le Agent Card di più agenti;
+    \item da una configurazione diretta, in cui l'indirizzo o il contenuto della card sono noti in anticipo al client.
+\end{itemize}
+
+La Figura~\ref{fig:agent-card} mostra una possibile Agent Card per l'agente dell'agenzia viaggi. I campi principali sono i seguenti.
+
+\begin{itemize}
+    \item \texttt{name}, \texttt{description}, \texttt{version} e \texttt{provider} identificano l'agente e l'organizzazione che lo offre.
+    \item \texttt{supported\allowbreak Interfaces} elenca gli indirizzi a cui l'agente è raggiungibile. Per ognuno indica il binding di trasporto (\texttt{JSONRPC}, \texttt{GRPC} o \texttt{HTTP+JSON}) e la versione del protocollo. Il primo elemento della lista è quello preferito dall'agente.
+    \item \texttt{capabilities} dichiara quali funzionalità opzionali sono supportate, come lo streaming degli aggiornamenti e le notifiche push. Se il client prova a usare una funzionalità non dichiarata, il server deve rispondere con un errore.
+    \item \texttt{security\allowbreak Schemes} e \texttt{security\allowbreak Requirements} descrivono come autenticarsi, usando schemi standard come API key, HTTP Bearer, OAuth~2.0, OpenID Connect o TLS mutuo.
+    \item \texttt{default\allowbreak Input\allowbreak Modes} e \texttt{default\allowbreak Output\allowbreak Modes} indicano, come tipi MIME, i formati che l'agente accetta e produce.
+    \item \texttt{skills} è l'elenco delle \emph{skill}, cioè delle capacità dell'agente. Ogni skill ha un identificativo, un nome, una descrizione, delle parole chiave (\texttt{tags}) ed eventualmente degli esempi di richieste.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+\begin{verbatim}
+{
+  "name": "Agente Viaggi Rossi",
+  "description": "Prenota voli e alberghi per trasferte di lavoro.",
+  "version": "1.0.0",
+  "provider": {
+    "organization": "Viaggi Rossi S.r.l.",
+    "url": "https://www.viaggirossi.example"
+  },
+  "supportedInterfaces": [
+    { "url": "https://agente.viaggirossi.example/a2a/v1",
+      "protocolBinding": "JSONRPC", "protocolVersion": "1.0" }
+  ],
+  "capabilities": { "streaming": true, "pushNotifications": false },
+  "securitySchemes": {
+    "oauth": { "oauth2SecurityScheme": { "flows": {
+      "clientCredentials": {
+        "tokenUrl": "https://auth.viaggirossi.example/token",
+        "scopes": { "prenotazioni": "Gestione delle prenotazioni" } } } } }
+  },
+  "securityRequirements": [
+    { "schemes": { "oauth": { "list": ["prenotazioni"] } } }
+  ],
+  "defaultInputModes": ["text/plain", "application/json"],
+  "defaultOutputModes": ["text/plain", "application/json"],
+  "skills": [
+    { "id": "prenota-trasferta",
+      "name": "Prenotazione trasferta",
+      "description": "Cerca e prenota volo e albergo per un viaggio
+                      di lavoro, rispettando date e budget indicati.",
+      "tags": ["viaggi", "voli", "alberghi"],
+      "examples": ["Prenota volo e albergo a Milano dal 12 al 14 novembre"] }
+  ]
+}
+\end{verbatim}
+\end{minipage}
+\caption{Esempio di Agent Card per l'agente dell'agenzia viaggi, nel formato della versione 1.0 della specifica. L'agente è raggiungibile tramite JSON-RPC, supporta lo streaming e richiede un token OAuth~2.0 ottenuto con il flusso \emph{client credentials}.}
+\label{fig:agent-card}
+\end{figure}
+
+Le skill sono soprattutto descrittive: non definiscono un'interfaccia rigida come lo schema dei parametri di uno strumento MCP, ma dicono in linguaggio naturale per quali richieste l'agente è adatto. Quando il client è a sua volta un agente basato su LLM, è il modello a leggere le descrizioni delle skill e a decidere se e a chi delegare un compito, in modo simile a come sceglie quale strumento chiamare (Sezione~\ref{sec:toolformer}).
+
+L'Agent Card pubblica è leggibile da chiunque, per cui un agente può non voler mostrare tutte le proprie capacità. Per questo la specifica prevede anche una \emph{Agent Card estesa}, più dettagliata, che il client può richiedere solo dopo essersi autenticato. La card può inoltre essere firmata digitalmente (campo \texttt{signatures}), così che il client possa verificare che provenga davvero dall'organizzazione indicata.
+
+\subsection{Message e Part}
+
+L'unità di comunicazione tra client e server è il \emph{Message}, che rappresenta un singolo turno della conversazione. I suoi campi principali sono:
+
+\begin{itemize}
+    \item \texttt{messageId}, un identificativo univoco generato da chi crea il messaggio;
+    \item \texttt{role}, che indica il mittente: \texttt{ROLE\_USER} per i messaggi inviati dal client, \texttt{ROLE\_AGENT} per quelli inviati dal server;
+    \item \texttt{parts}, la lista dei contenuti del messaggio;
+    \item \texttt{contextId} e \texttt{taskId}, facoltativi, che collegano il messaggio a una conversazione o a un Task già esistenti;
+    \item \texttt{reference\allowbreak Task\allowbreak Ids}, facoltativo, con cui il client può citare altri Task come contesto aggiuntivo.
+\end{itemize}
+
+Il contenuto vero e proprio è diviso in \emph{Part}. Ogni Part contiene esattamente uno dei seguenti tipi di dato: testo (\texttt{text}), il contenuto binario di un file codificato in base64 (\texttt{raw}), un riferimento a un file tramite URL (\texttt{url}) oppure dati strutturati in formato JSON (\texttt{data}). A questo si possono aggiungere il tipo MIME del contenuto (\texttt{mediaType}), un nome di file e dei metadati. Grazie alle Part un singolo messaggio può contenere, ad esempio, una richiesta in linguaggio naturale insieme a un oggetto JSON con le date del viaggio, ed è in questo modo che il protocollo realizza il principio di indipendenza dalla modalità.
+
+Un messaggio con cui l'agente aziendale avvia la prenotazione potrebbe essere il seguente:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+\begin{verbatim}
+{
+  "messageId": "msg-001",
+  "role": "ROLE_USER",
+  "parts": [
+    { "text": "Prenota volo e albergo per una trasferta a Milano." },
+    { "data": { "partenza": "Roma", "andata": "2026-11-12",
+                "ritorno": "2026-11-14" },
+      "mediaType": "application/json" }
+  ]
+}
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+\subsection{Task, Artifact e contesto}
+
+Quando riceve un messaggio, il server può rispondere in due modi. Per le interazioni semplici, che si esauriscono in una sola risposta, può restituire direttamente un altro Message. Quando invece la richiesta richiede un lavoro da seguire nel tempo, crea un \emph{Task}, l'unità di lavoro fondamentale del protocollo. Il Task ha i seguenti campi:
+
+\begin{itemize}
+    \item \texttt{id}, l'identificativo del Task, generato sempre dal server: il client non può scegliere l'identificativo di un nuovo Task;
+    \item \texttt{contextId}, il contesto a cui il Task appartiene;
+    \item \texttt{status}, lo stato corrente, composto da uno stato (\texttt{state}), da un messaggio facoltativo che lo accompagna e da un timestamp;
+    \item \texttt{artifacts}, i risultati prodotti;
+    \item \texttt{history}, la cronologia dei messaggi scambiati durante l'esecuzione.
+\end{itemize}
+
+I risultati di un Task sono restituiti come \emph{Artifact}. Un Artifact ha un proprio identificativo (\texttt{artifactId}), un nome, una descrizione facoltativa e, come il Message, una lista di Part. Nell'esempio, l'Artifact finale potrebbe contenere il riepilogo della prenotazione sia come testo sia come dati strutturati, con i codici del volo e dell'albergo. La specifica distingue in modo netto i due oggetti: i Message servono a comunicare (avviare un compito, chiedere chiarimenti, dare aggiornamenti sull'avanzamento), mentre gli Artifact contengono l'output del lavoro, e i risultati non dovrebbero essere restituiti dentro i messaggi \cite{a2aspec}.
+
+Il \texttt{contextId} raggruppa Task e Message che fanno parte della stessa conversazione. Se il primo messaggio del client non ne contiene uno, il server può generarlo e lo restituisce nella risposta; il client lo usa poi nei messaggi successivi per indicare che appartengono alla stessa sessione. Il server può usare il contesto per mantenere lo stato della conversazione, ad esempio la memoria dell'LLM, tra un Task e l'altro. Il rapporto tra i due identificativi è quindi il seguente: il \texttt{taskId} identifica un singolo lavoro, mentre il \texttt{contextId} identifica la conversazione in cui quel lavoro si inserisce e che può contenere più Task.
+
+\subsection{Le operazioni}
+
+Il livello delle operazioni astratte definisce che cosa il client può chiedere al server. La Tabella~\ref{tab:operazioni-a2a} riporta le operazioni della versione 1.0 con il nome usato nel binding JSON-RPC.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabular}{p{0.36\linewidth} p{0.56\linewidth}}
+        \hline
+        \textbf{Operazione} & \textbf{Descrizione} \\
+        \hline
+        \texttt{SendMessage} & Invia un messaggio. La risposta è un Task oppure un Message. \\
+        \texttt{Send\allowbreak Streaming\allowbreak Message} & Come la precedente, ma la risposta è un flusso di eventi che segue l'avanzamento del Task. \\
+        \texttt{GetTask} & Restituisce lo stato corrente di un Task. \\
+        \texttt{ListTasks} & Elenca i Task, con filtri e paginazione. \\
+        \texttt{CancelTask} & Chiede la cancellazione di un Task. \\
+        \texttt{Subscribe\allowbreak To\allowbreak Task} & Apre un flusso di eventi su un Task già esistente e non terminato. \\
+        \texttt{Create}/\texttt{Get}/\texttt{List}/\texttt{Delete}\-\texttt{Task\allowbreak Push\allowbreak Notification\allowbreak Config} & Gestiscono la configurazione delle notifiche push. \\
+        \texttt{Get\allowbreak Extended\allowbreak Agent\allowbreak Card} & Restituisce l'Agent Card estesa a un client autenticato. \\
+        \hline
+    \end{tabular}
+    \caption{Operazioni definite dalla versione 1.0 del protocollo A2A, con il nome usato nel binding JSON-RPC \cite{a2aspec}.}
+    \label{tab:operazioni-a2a}
+\end{table}
+
+L'operazione principale è \texttt{SendMessage}. Per impostazione predefinita è bloccante: il server risponde solo quando il Task ha raggiunto uno stato terminale oppure si è fermato in attesa di qualcosa dal client. Il client può però chiedere una risposta immediata con il parametro \texttt{return\allowbreak Immediately}; in questo caso riceve subito il Task appena creato, mentre l'elaborazione continua in background.
+
+Per seguire un Task che prosegue nel tempo il protocollo offre tre meccanismi:
+
+\begin{itemize}
+    \item il \emph{polling}, in cui il client chiama periodicamente \texttt{GetTask}. È il più semplice, ma introduce ritardi e richieste inutili;
+    \item lo \emph{streaming}, in cui il server invia gli eventi mentre si verificano, tramite \texttt{Send\allowbreak Streaming\allowbreak Message} o \texttt{Subscribe\allowbreak To\allowbreak Task}. Nei binding basati su HTTP gli eventi viaggiano come Server-Sent Events e sono di due tipi: \texttt{Task\allowbreak Status\allowbreak Update\allowbreak Event}, per i cambi di stato, e \texttt{Task\allowbreak Artifact\allowbreak Update\allowbreak Event}, per gli Artifact nuovi o aggiornati, che possono anche essere inviati a pezzi;
+    \item le \emph{notifiche push}, in cui il server invia gli aggiornamenti con una richiesta HTTP POST a un indirizzo (\emph{webhook}) registrato dal client. Sono adatte ai compiti molto lunghi, perché il client non deve tenere aperta una connessione.
+\end{itemize}
+
+Lo streaming e le notifiche push sono funzionalità opzionali, che il server deve dichiarare nel campo \texttt{capabilities} dell'Agent Card.
+
+\subsection{Il ciclo di vita del Task}
+
+Ogni Task attraversa una serie di stati, registrati nel campo \texttt{status}. La versione 1.0 ne definisce nove, riportati nella Tabella~\ref{tab:stati-task}. Nella serializzazione JSON gli stati compaiono con il prefisso \texttt{TASK\_STATE\_} (ad esempio \texttt{TASK\_\allowbreak STATE\_\allowbreak INPUT\_\allowbreak REQUIRED}); nel testo si usa per brevità il nome senza prefisso.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabular}{p{0.25\linewidth} p{0.14\linewidth} p{0.51\linewidth}}
+        \hline
+        \textbf{Stato} & \textbf{Tipo} & \textbf{Significato} \\
+        \hline
+        \texttt{UNSPECIFIED} & -- & Valore predefinito, indica uno stato sconosciuto. \\
+        \texttt{SUBMITTED} & attivo & Il Task è stato ricevuto e accettato, ma l'elaborazione non è ancora iniziata. \\
+        \texttt{WORKING} & attivo & L'agente sta elaborando il Task. \\
+        \texttt{INPUT\_\allowbreak REQUIRED} & interrotto & L'agente ha bisogno di altre informazioni dal client per proseguire. \\
+        \texttt{AUTH\_REQUIRED} & interrotto & L'agente ha bisogno di un'autenticazione aggiuntiva per proseguire. \\
+        \texttt{COMPLETED} & terminale & Il Task è stato completato con successo. \\
+        \texttt{FAILED} & terminale & Il Task è terminato con un errore. \\
+        \texttt{CANCELED} & terminale & Il Task è stato cancellato prima del completamento. \\
+        \texttt{REJECTED} & terminale & L'agente ha deciso di non eseguire il Task, subito o dopo averlo iniziato. \\
+        \hline
+    \end{tabular}
+    \caption{Gli stati di un Task nella versione 1.0 del protocollo A2A \cite{a2aspec}.}
+    \label{tab:stati-task}
+\end{table}
+
+A parte \texttt{UNSPECIFIED}, che è solo il valore predefinito del campo, gli stati si dividono in tre gruppi (Figura~\ref{fig:ciclo-task}).
+
+Gli \textbf{stati attivi} sono \texttt{SUBMITTED} e \texttt{WORKING}. Un Task appena creato è in \texttt{SUBMITTED} e passa a \texttt{WORKING} quando l'agente inizia a elaborarlo. Non è obbligatorio attraversare tutti gli stati: un agente che risponde in pochi istanti può creare il Task e restituirlo direttamente come \texttt{COMPLETED}.
+
+Gli \textbf{stati interrotti} sono \texttt{INPUT\_\allowbreak REQUIRED} e \texttt{AUTH\_REQUIRED}. In questi stati il Task è sospeso: l'agente non sta lavorando e aspetta qualcosa dal client. Nel caso di \texttt{INPUT\_\allowbreak REQUIRED} il campo \texttt{status} contiene di solito un messaggio che spiega che cosa serve. Il client riprende il Task inviando un nuovo messaggio con lo stesso \texttt{taskId} e lo stesso \texttt{contextId}, e il Task torna in \texttt{WORKING}. È questo meccanismo che permette all'agente remoto di chiedere chiarimenti nel mezzo di un compito, come previsto dai requisiti della Sezione~\ref{sec:perche-a2a}. \texttt{AUTH\_REQUIRED} funziona in modo analogo, ma riguarda le credenziali: l'agente segnala che per continuare il client deve fornire un'autorizzazione aggiuntiva, ad esempio per accedere a un servizio per conto dell'utente.
+
+Gli \textbf{stati terminali} sono \texttt{COMPLETED}, \texttt{FAILED}, \texttt{CANCELED} e \texttt{REJECTED}. Un Task in uno stato terminale non può più cambiare: se il client gli invia un altro messaggio riceve un errore. Se l'utente vuole modificare un risultato, ad esempio cambiare l'albergo dopo che la prenotazione è stata completata, il client deve creare un nuovo Task nello stesso \texttt{contextId}, eventualmente citando il precedente con \texttt{reference\allowbreak Task\allowbreak Ids}. Questa scelta rende ogni Task un'unità di lavoro immutabile, a cui corrisponde in modo univoco il proprio risultato, e semplifica il tracciamento di ciò che è stato fatto \cite{a2aspec}.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        stato/.style={draw, rounded corners, minimum width=2.3cm, minimum height=0.75cm, align=center, font=\footnotesize\ttfamily},
+        attivo/.style={stato, fill=blue!8},
+        interrotto/.style={stato, fill=yellow!20},
+        terminale/.style={stato, fill=gray!15},
+        freccia/.style={-{Stealth[length=2.2mm]}, thick},
+        etichetta/.style={font=\scriptsize, align=center}
+    ]
+        % Stati attivi
+        \node[attivo] (sub)  at (0,0)   {SUBMITTED};
+        \node[attivo] (work) at (3.6,0) {WORKING};
+
+        % Stati interrotti
+        \node[interrotto] (input) at (1.8,2.5) {INPUT\_REQUIRED};
+        \node[interrotto] (auth)  at (5.4,2.5) {AUTH\_REQUIRED};
+
+        % Stati terminali
+        \node[terminale] (comp) at (8.4,1.35)  {COMPLETED};
+        \node[terminale] (fail) at (8.4,0.45)  {FAILED};
+        \node[terminale] (canc) at (8.4,-0.45) {CANCELED};
+        \node[terminale] (rej)  at (8.4,-1.35) {REJECTED};
+
+        % Ingresso
+        \draw[freccia] (-2.4,0) -- node[etichetta, above, pos=0.45] {nuovo\\messaggio} (sub);
+
+        % Transizioni principali
+        \draw[freccia] (sub) -- (work);
+        \draw[freccia] (work.160) to[bend left=12] (input.south);
+        \draw[freccia] (input.-15) to[bend left=12] (work.110);
+        \draw[freccia] (work.70) to[bend left=12] (auth.195);
+        \draw[freccia] (auth.south) to[bend left=12] (work.20);
+        \draw[freccia] (work.east) -- (comp.west);
+        \draw[freccia] (work.east) -- (fail.west);
+        \draw[freccia] (work.east) -- (canc.west);
+        \draw[freccia] (work.east) -- (rej.west);
+        \draw[freccia] (sub.south) |- (rej.west);
+
+        % Raggruppamenti
+        \draw[dashed, rounded corners, gray] (0.4,1.95) rectangle (6.8,3.1);
+        \node[etichetta, gray!70!black, anchor=south] at (3.6,3.1) {stati interrotti};
+        \draw[dashed, rounded corners, gray] (7.05,-1.9) rectangle (9.75,1.9);
+        \node[etichetta, gray!70!black, anchor=south] at (8.4,1.9) {stati terminali};
+    \end{tikzpicture}
+    \caption{Le transizioni principali del ciclo di vita di un Task. Dagli stati interrotti il Task torna in \texttt{WORKING} quando il client invia un nuovo messaggio con lo stesso \texttt{taskId}. La cancellazione può essere richiesta da qualsiasi stato non terminale; per leggibilità è mostrata solo da \texttt{WORKING}.}
+    \label{fig:ciclo-task}
+\end{figure}
+
+La cancellazione avviene su richiesta del client, con l'operazione \texttt{CancelTask}. Il server prova a interrompere il lavoro e restituisce il Task aggiornato, ma l'esito non è garantito: se il Task è già in uno stato terminale, o se in quel momento non può essere interrotto, il server risponde con l'errore \texttt{Task\allowbreak Not\allowbreak Cancelable\allowbreak Error} \cite{a2aspec}.
+
+La Figura~\ref{fig:esempio-ciclo} mostra come evolve il Task nello scenario della trasferta. L'agente aziendale invia la richiesta con \texttt{SendMessage}. L'agente dell'agenzia crea il Task, inizia a cercare i voli e si accorge che, per scegliere l'albergo, gli manca il budget: porta quindi il Task in \texttt{INPUT\_\allowbreak REQUIRED} e, nel messaggio di stato, chiede quale sia la spesa massima per notte. Poiché \texttt{SendMessage} è bloccante fino a uno stato interrotto, a questo punto il client riceve la risposta con la domanda. L'agente aziendale ricava il budget dalle regole sui rimborsi e invia un secondo messaggio con lo stesso \texttt{taskId}. Il Task torna in \texttt{WORKING}, l'agente dell'agenzia completa la prenotazione, la allega come Artifact e porta il Task in \texttt{COMPLETED}.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        attore/.style={draw, rounded corners, fill=blue!8, minimum width=3.2cm, minimum height=0.8cm, align=center, font=\small\bfseries},
+        msg/.style={-{Stealth[length=2.5mm]}, thick},
+        testo/.style={font=\scriptsize, align=center},
+        stato/.style={draw, rounded corners, fill=yellow!15, font=\scriptsize\ttfamily, inner sep=2pt, anchor=west}
+    ]
+        % Attori e linee di vita
+        \node[attore] (c) at (0,0)   {Agente aziendale\\{\footnotesize\mdseries client}};
+        \node[attore] (s) at (7.5,0) {Agente dell'agenzia\\{\footnotesize\mdseries server}};
+        \draw[gray, dashed] (c.south) -- (0,-7.5);
+        \draw[gray, dashed] (s.south) -- (7.5,-7.5);
+
+        % Primo messaggio
+        \draw[msg] (0,-1.2) -- node[testo, above] {\texttt{SendMessage}: ``Prenota volo e albergo a Milano\ldots''} (7.5,-1.2);
+        \node[stato] at (7.7,-1.5) {SUBMITTED};
+        \node[stato] at (7.7,-2.1) {WORKING};
+        \node[stato] at (7.7,-2.7) {INPUT\_REQUIRED};
+
+        % Risposta con richiesta di chiarimento
+        \draw[msg] (7.5,-3.3) -- node[testo, above] {Task \texttt{t1}, \texttt{INPUT\_\allowbreak REQUIRED}: ``Qual è il budget per notte?''} (0,-3.3);
+
+        % Secondo messaggio
+        \draw[msg] (0,-4.6) -- node[testo, above] {\texttt{SendMessage} (\texttt{taskId}: \texttt{t1}): ``Massimo 120 euro''} (7.5,-4.6);
+        \node[stato] at (7.7,-4.9) {WORKING};
+        \node[testo, anchor=west] at (7.7,-5.6) {prenota volo\\e albergo};
+        \node[stato] at (7.7,-6.3) {COMPLETED};
+
+        % Risposta finale
+        \draw[msg] (7.5,-7.0) -- node[testo, above] {Task \texttt{t1}, \texttt{COMPLETED} + Artifact ``Prenotazione''} (0,-7.0);
+    \end{tikzpicture}
+    \caption{Evoluzione del Task nello scenario della trasferta. L'agente remoto sospende il Task in \texttt{INPUT\_\allowbreak REQUIRED} per chiedere il budget; il client risponde con un nuovo messaggio sullo stesso Task, che riprende fino al completamento.}
+    \label{fig:esempio-ciclo}
+\end{figure}
+
+Il protocollo stabilisce quindi quali stati esistono e che cosa significano, ma non dice come l'agente remoto debba decidere di passare da uno stato all'altro: questo dipende dalla sua implementazione. La Sezione~\ref{sec:agent-executor} mostra come questo compito è organizzato nell'SDK Python ufficiale.
 
 \section{Il ruolo di AgentExecutor nel ciclo di vita dei Task}
 \label{sec:agent-executor}
