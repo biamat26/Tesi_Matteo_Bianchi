@@ -23,6 +23,12 @@
 \algdef{C}[TRY]{TRY}{Catch}[1]{ \textbf{catch} #1}
 \algdef{C}[TRY]{TRY}{Finally}{\textbf{finally}}
 
+% consente di andare a capo dopo "_" negli identificatori (es. TASK_STATE_...)
+\let\underscoreoriginale\_
+\renewcommand{\_}{\underscoreoriginale\allowbreak}
+% evita righe che sporgono dal margine con identificatori lunghi in \texttt
+\setlength{\emergencystretch}{3em}
+
 
 \begin{document}
 \frontmatter
@@ -31,7 +37,6 @@
 \ringraziamenti{ringraziamenti}
 \introduzione{introduzione}
 \generaIndice
-\generaIndiceFigure
 
 \mainmatter
 \capitolo{Dagli LLM agli Agent}{capitoli/capitolo1_llm-e-agenti}

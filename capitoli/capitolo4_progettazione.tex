@@ -379,7 +379,7 @@ La Figura~\ref{fig:race-timeline} mostra la sequenza del caso critico. La richie
 
         \node[event]    (e1) at (0,0)    {il grafo produce\\un esito};
         \node[event]    (e2) at (0,-2.2) {$esito\_definito \gets$ vero;\\\textsc{PubblicaProtetto}};
-        \node[critical] (e3) at (0,-4.4) {\textbf{await}\\\texttt{shield}($pubblicazione$)};
+        \node[critical] (e3) at (0,-4.4) {\textbf{await}\\{\small\texttt{shield}($pubblicazione$)}};
         \node[critical] (e4) at (0,-7.2) {attende la fine della pubblicazione, poi rilancia};
         \node[stop]     (e5) at (0,-9.4) {\texttt{except}: nessun \textsc{Canceled};\\\texttt{finally}: registro};
 
