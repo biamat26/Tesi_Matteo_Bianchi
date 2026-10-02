@@ -2,9 +2,10 @@
 
 \titolo{Progettazione e sviluppo della gestione dei task in sistemi multi-agente basati sul protocollo A2A e LangGraph}
 \autore{Matteo Bianchi}
-\matricola{605936}
 \relatore{Prof. Maurizio Patrignani}
 \correlatore{Dott. Federico Chinotto, Fabio Barillari}
+
+
 \annoAccademico{2025/2026}
 
 \dedica{Questa è la dedica}
@@ -19,12 +20,11 @@
 \usepackage{algpseudocode}
 \usepackage{placeins}
 \algdef{SE}[TRY]{Try}{EndTry}{\textbf{try}}{\textbf{end try}}
-\algdef{C}[TRY]{TRY}{Catch}[1]{\textbf{catch} #1}
+\algdef{C}[TRY]{TRY}{Catch}[1]{ \textbf{catch} #1}
 \algdef{C}[TRY]{TRY}{Finally}{\textbf{finally}}
-% --- FINE richiamo di pacchetti di utilità
+
 
 \begin{document}
-% ----- Pagine di frontespizio, numerate in romano (obbligatorio)
 \frontmatter
 \generaFrontespizio
 \generaDedica
@@ -33,7 +33,6 @@
 \generaIndice
 \generaIndiceFigure
 
-% ----- Pagine di tesi, numerate in arabo (obbligatorio)
 \mainmatter
 \capitolo{Dagli LLM agli Agent}{capitoli/capitolo1_llm-e-agenti}
 \capitolo{Il Protocollo A2A}{capitoli/capitolo2_protocollo-a2a}
@@ -44,11 +43,10 @@
 \capitolo{Validazione e Testing}{capitoli/capitolo6_validazione-testing}
 
 
-% ----- Parte finale della tesi (obbligatorio)
+
 \backmatter
 \conclusioni{conclusioni}
 
-% Bibliografia con BibTeX (obbligatoria)
 \bibliography{bibliografia}
 
 \end{document}
