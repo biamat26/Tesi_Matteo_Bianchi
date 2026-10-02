@@ -383,3 +383,116 @@ Il protocollo stabilisce quindi quali stati esistono e che cosa significano, ma 
 
 \section{Il ruolo di AgentExecutor nel ciclo di vita dei Task}
 \label{sec:agent-executor}
+La specifica descritta nella Sezione~\ref{sec:a2a-architettura} stabilisce quali oggetti si scambiano client e server, quali operazioni sono disponibili e quali stati può attraversare un Task, ma non dice come un agente debba produrre questi stati. Chi realizza un server A2A potrebbe implementare da zero il binding di trasporto, la validazione delle richieste e la memorizzazione dei Task, ma si tratta di un lavoro lungo, uguale per tutti gli agenti e facile da sbagliare. Per questo il progetto A2A mette a disposizione degli SDK ufficiali per diversi linguaggi, che implementano le parti comuni del protocollo e lasciano allo sviluppatore solo la logica dell'agente. Questo lavoro si basa sull'SDK Python (\texttt{a2a-sdk}) \cite{a2apythonsdk}, nella versione descritta nel Capitolo~\ref{cap:requisiti}.
+
+Il punto in cui la logica dell'agente si collega all'SDK è la classe astratta \texttt{AgentExecutor}. È importante notare che \texttt{AgentExecutor} non fa parte della specifica: è una scelta di progetto dell'SDK Python, e un altro SDK, o un server scritto senza SDK, potrebbe organizzare lo stesso lavoro in modo diverso. Dal punto di vista del client non cambia nulla, perché il client vede solo le operazioni e gli oggetti definiti dal protocollo. Questa sezione descrive i componenti del server in cui la classe si inserisce, i suoi due metodi \texttt{execute} e \texttt{cancel}, e il modo in cui il ciclo di vita della Sezione~\ref{sec:a2a-architettura} viene prodotto da questi metodi.
+
+\subsection{I componenti del server}
+
+Un server A2A costruito con l'SDK Python è composto da quattro componenti principali, mostrati nella Figura~\ref{fig:flusso-executor}.
+
+\begin{itemize}
+    \item \textbf{L'endpoint A2A.} È l'applicazione web, costruita con Starlette o FastAPI, che riceve le richieste HTTP. L'SDK fornisce le rotte già pronte per ciascun binding di trasporto e per la pubblicazione dell'Agent Card all'indirizzo \emph{well-known}. Questo componente si occupa solo del trasporto: decodifica la richiesta, ad esempio un messaggio JSON-RPC, e la passa al gestore delle richieste.
+    \item \textbf{Il gestore delle richieste} (\texttt{DefaultRequestHandler}). Implementa le operazioni della Tabella~\ref{tab:operazioni-a2a}, con un metodo per ciascuna. Quando riceve un messaggio recupera il Task a cui si riferisce, se esiste, prepara il contesto della richiesta e avvia l'esecuzione dell'agente. Raccoglie poi gli eventi prodotti dall'agente e decide come restituirli al client, in un'unica risposta o in streaming.
+    \item \textbf{Il TaskStore.} È il componente che memorizza i Task, con il loro stato, gli Artifact e la cronologia dei messaggi. L'SDK ne offre un'implementazione in memoria (\texttt{InMemoryTaskStore}) e una basata su database. Le operazioni \texttt{GetTask} e \texttt{ListTasks} leggono direttamente da qui.
+    \item \textbf{L'\texttt{AgentExecutor}.} È l'unico componente che lo sviluppatore deve scrivere. Si crea una classe che estende \texttt{AgentExecutor} e che, al suo interno, richiama la logica vera e propria dell'agente; nel caso di questa tesi, un grafo LangGraph.
+\end{itemize}
+
+La divisione dei compiti è netta. L'endpoint e il gestore delle richieste conoscono il protocollo ma non sanno nulla di ciò che fa l'agente; l'\texttt{AgentExecutor} conosce l'agente ma non deve occuparsi del trasporto, della serializzazione o della memorizzazione dei Task. È questo che permette di riusare la stessa infrastruttura per agenti diversi, ed è anche il motivo per cui il lavoro descritto nei capitoli successivi si concentra sull'\texttt{AgentExecutor} e sulla parte del server che espone l'endpoint.
+
+L'interfaccia da implementare è molto piccola. Semplificando, è la seguente \cite{a2apythondocs}:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+\begin{verbatim}
+class AgentExecutor(ABC):
+
+    @abstractmethod
+    async def execute(self, context: RequestContext,
+                      event_queue: EventQueue) -> None: ...
+
+    @abstractmethod
+    async def cancel(self, context: RequestContext,
+                     event_queue: EventQueue) -> None: ...
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+Entrambi i metodi sono asincroni, cioè coroutine eseguite dal ciclo di eventi di \texttt{asyncio}, e ricevono gli stessi due argomenti: il contesto della richiesta e una coda di eventi. Nessuno dei due restituisce un valore. L'agente non risponde al client direttamente, ma comunica con il resto del server solo attraverso la coda.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        comp/.style={draw, rounded corners, fill=blue!8, minimum width=3.4cm, minimum height=0.9cm, align=center, font=\small},
+        agente/.style={comp, fill=orange!15, very thick},
+        dati/.style={draw, rounded corners, fill=gray!12, minimum width=2.6cm, minimum height=0.8cm, align=center, font=\small},
+        freccia/.style={-{Stealth[length=2.5mm]}, thick},
+        etichetta/.style={font=\footnotesize, align=left}
+    ]
+        % Componenti
+        \node[comp, fill=white] (client)   at (0,0)    {Client A2A};
+        \node[comp]             (endpoint) at (0,-2.0) {Endpoint A2A\\{\footnotesize Starlette / FastAPI}};
+        \node[comp]             (handler)  at (0,-3.8) {\texttt{DefaultRequestHandler}};
+        \node[agente]           (executor) at (0,-5.8) {\texttt{AgentExecutor}\\{\footnotesize\texttt{execute} / \texttt{cancel}}};
+        \node[dati]             (queue)    at (6.4,-5.8) {\texttt{EventQueue}};
+        \node[dati]             (store)    at (6.4,-3.8) {\texttt{TaskStore}};
+
+        % Percorso della richiesta
+        \draw[freccia] (client) -- node[etichetta, right] {richiesta HTTP\\(ad es.\ \texttt{SendMessage})} (endpoint);
+        \draw[freccia] (endpoint) -- node[etichetta, right] {operazione decodificata} (handler);
+        \draw[freccia] (handler) -- node[etichetta, left, align=right] {\texttt{execute(context,}\\\texttt{event\_queue)}} (executor);
+
+        % Eventi
+        \draw[freccia] (executor) -- node[etichetta, below] {pubblica eventi} (queue);
+        \draw[freccia] (queue.north west) -- node[etichetta, below right=-1pt, pos=0.45] {eventi} (handler.south east);
+        \draw[freccia] (handler) -- node[etichetta, above] {aggiorna il Task} (store);
+
+        % Risposta
+        \draw[freccia] (handler.west) -- ++(-1.7,0) |- node[etichetta, pos=0.25, left, align=right] {Task, Message\\o stream\\di eventi} (client.west);
+
+        % Confine del server
+        \draw[dashed, rounded corners, gray] (-3.0,-1.4) rectangle (8.0,-6.6);
+        \node[font=\footnotesize\itshape, gray!70!black, anchor=south east] at (7.95,-6.55) {Server A2A};
+    \end{tikzpicture}
+    \caption{Il percorso di una richiesta in un server costruito con l'SDK Python di A2A. L'unico componente scritto dallo sviluppatore è l'\texttt{AgentExecutor} (evidenziato), che pubblica eventi sulla coda; è il gestore delle richieste a trasformarli in aggiornamenti del Task memorizzato e in risposte per il client.}
+    \label{fig:flusso-executor}
+\end{figure}
+
+\subsection{Il metodo \texorpdfstring{\texttt{execute}}{execute}}
+
+Il metodo \texttt{execute} contiene la logica dell'agente ed è invocato dal gestore delle richieste ogni volta che arriva un nuovo messaggio, sia con \texttt{SendMessage} sia con \texttt{SendStreamingMessage}. Il primo argomento, di tipo \texttt{RequestContext}, contiene tutto ciò che serve per elaborare la richiesta: il messaggio ricevuto, il \texttt{task\_id} e il \texttt{context\_id}, generati dall'SDK se il client non li ha forniti, l'eventuale Task già esistente (\texttt{current\_task}) e la configurazione inviata dal client. Il metodo \texttt{get\_user\_input} restituisce direttamente il testo contenuto nelle Part del messaggio. Il secondo argomento, di tipo \texttt{EventQueue}, è la coda su cui \texttt{execute} pubblica i propri risultati.
+
+Gli eventi che si possono pubblicare corrispondono agli oggetti del protocollo visti nella Sezione~\ref{sec:a2a-architettura}:
+
+\begin{itemize}
+    \item un \textbf{Message}, per le interazioni semplici che si esauriscono in una sola risposta e non creano un Task. In questo caso deve essere l'unico evento pubblicato;
+    \item un \textbf{Task}, che registra il nuovo Task, di solito nello stato \texttt{SUBMITTED}. Deve precedere qualsiasi aggiornamento di stato, perché l'SDK rifiuta un cambio di stato per un Task che non è ancora stato creato \cite{a2apythonsdk};
+    \item un \textbf{\texttt{TaskStatusUpdateEvent}}, che porta il Task in un nuovo stato, eventualmente con un messaggio che lo accompagna;
+    \item un \textbf{\texttt{TaskArtifactUpdateEvent}}, che aggiunge un Artifact al Task o ne aggiorna uno esistente.
+\end{itemize}
+
+Per non costruire questi oggetti a mano, l'SDK fornisce la classe di supporto \texttt{TaskUpdater}, che si crea a partire dalla coda e dagli identificativi del Task e offre un metodo per ciascuna transizione: \texttt{start\_work} porta il Task in \texttt{WORKING}, \texttt{requires\_input} e \texttt{requires\_auth} negli stati interrotti, \texttt{complete}, \texttt{failed}, \texttt{reject} e \texttt{cancel} negli stati terminali, mentre \texttt{add\_artifact} pubblica un Artifact \cite{a2apythonsdk}.
+
+L'aspetto più importante è che \texttt{execute} non modifica mai direttamente il Task memorizzato. Si limita a pubblicare eventi, ed è l'SDK a consumarli dalla coda, ad applicarli al Task nel TaskStore e a inoltrarli al client (Figura~\ref{fig:flusso-executor}). Il ciclo di vita della Figura~\ref{fig:ciclo-task} è quindi il risultato della sequenza di eventi pubblicata da \texttt{execute}: ogni \texttt{TaskStatusUpdateEvent} corrisponde a una transizione. Di conseguenza \texttt{execute} non ha bisogno di sapere se il client sta aspettando una risposta unica o uno stream. Pubblica sempre gli stessi eventi, e il gestore delle richieste decide come consegnarli in base all'operazione usata dal client. Questa proprietà è alla base delle scelte di progetto descritte nella Sezione~\ref{sec:execute}.
+
+Il contratto dell'interfaccia stabilisce anche quando \texttt{execute} deve terminare \cite{a2apythondocs}. Prima di restituire il controllo, il metodo dovrebbe aver portato il Task in uno stato terminale oppure in uno stato interrotto. Nel caso di \texttt{INPUT\_\allowbreak REQUIRED}, \texttt{execute} pubblica il cambio di stato e termina; quando il client invia un nuovo messaggio sullo stesso Task, il gestore delle richieste invoca di nuovo \texttt{execute}, questa volta con \texttt{current\_task} valorizzato, e l'agente riprende il lavoro. Se invece \texttt{execute} solleva un'eccezione non gestita, l'SDK la intercetta e porta il Task in \texttt{FAILED} \cite{a2apythonsdk}. L'SDK garantisce infine che, per lo stesso Task, le richieste vengano elaborate una alla volta, per cui due esecuzioni di \texttt{execute} sullo stesso Task non si sovrappongono.
+
+\subsection{Il metodo \texorpdfstring{\texttt{cancel}}{cancel}}
+
+Il metodo \texttt{cancel} corrisponde all'operazione \texttt{CancelTask}. Quando il client chiede di cancellare un Task, il gestore delle richieste verifica che il Task esista e invoca \texttt{cancel} con il contesto del Task e una coda di eventi. Secondo il contratto dell'interfaccia, l'agente deve provare a interrompere il lavoro in corso e pubblicare l'evento che porta il Task in \texttt{CANCELED} \cite{a2apythondocs}. Anche in questo caso, quindi, il cambio di stato passa per la coda di eventi e non per una modifica diretta del Task memorizzato.
+
+Interrompere il lavoro non è però immediato. Quando arriva la richiesta, \texttt{execute} può essere ancora in esecuzione, ad esempio a metà di una chiamata all'LLM, oppure può essere già terminata perché il Task è in \texttt{INPUT\_\allowbreak REQUIRED}. Per gestire il primo caso l'SDK esegue ogni Task in un task \texttt{asyncio} dedicato e, oltre a invocare \texttt{cancel}, cancella anche questo task, così che \texttt{execute} venga interrotta al primo punto di sospensione utile \cite{a2apythonsdk}. Il modo in cui \texttt{cancel} ed \texttt{execute} si dividono il lavoro in questi casi, e l'ordine in cui avvengono le operazioni, sono uno dei temi centrali di questa tesi e sono trattati nella Sezione~\ref{sec:cancel}.
+
+\subsection{Lo scenario della trasferta dal lato del server}
+
+Si può ora rileggere lo scenario della Figura~\ref{fig:esempio-ciclo} dal punto di vista dell'agente dell'agenzia viaggi, supponendo che sia costruito con l'SDK Python. L'interazione richiede due invocazioni di \texttt{execute}, una per ciascun messaggio del client.
+
+\begin{enumerate}
+    \item \textbf{Primo messaggio.} Il gestore delle richieste riceve la richiesta \texttt{SendMessage}. Poiché il messaggio non contiene un \texttt{taskId}, l'SDK genera un nuovo identificativo e invoca \texttt{execute} con \texttt{current\_task} non valorizzato. L'agente pubblica il Task in \texttt{SUBMITTED} e poi, con \texttt{start\_work}, un cambio di stato verso \texttt{WORKING}. Durante la ricerca dei voli può pubblicare altri aggiornamenti in \texttt{WORKING}, ad esempio ``Sto cercando i voli disponibili'', che un client in streaming riceve in tempo reale. Quando si accorge che manca il budget, l'agente chiama \texttt{requires\_input} con il messaggio ``Qual è il budget per notte?'' e \texttt{execute} termina. Il Task è ora in \texttt{INPUT\_\allowbreak REQUIRED}, e il gestore restituisce al client il Task con la domanda.
+    \item \textbf{Secondo messaggio.} Il client invia la risposta con lo stesso \texttt{taskId}. Il gestore recupera il Task dal TaskStore e invoca di nuovo \texttt{execute}, questa volta con \texttt{current\_task} valorizzato. L'agente non pubblica un nuovo Task, perché esiste già, ma solo il ritorno in \texttt{WORKING}. Completa poi la prenotazione, pubblica il riepilogo con \texttt{add\_artifact} e chiude con \texttt{complete}, che porta il Task in \texttt{COMPLETED}. Il gestore restituisce al client il Task finale con l'Artifact.
+\end{enumerate}
+
+In nessun punto l'agente ha scritto direttamente nel TaskStore o costruito la risposta per il client: si è limitato a pubblicare, nell'ordine, gli eventi corrispondenti alle transizioni della Figura~\ref{fig:ciclo-task}. Se durante il primo messaggio fosse arrivata una richiesta \texttt{CancelTask}, l'esecuzione sarebbe stata interrotta e il Task sarebbe passato in \texttt{CANCELED}; se invece la richiesta fosse arrivata mentre il Task era in \texttt{INPUT\_\allowbreak REQUIRED}, non ci sarebbe stata nessuna esecuzione da interrompere e il cambio di stato sarebbe dipeso solo da \texttt{cancel}.
+
+Proprio questi casi mostrano che la correttezza del ciclo di vita dipende in larga parte da come vengono scritti \texttt{execute} e \texttt{cancel}. Il protocollo e l'SDK forniscono gli stati e il meccanismo per comunicarli, ma è l'\texttt{AgentExecutor} a decidere quali eventi pubblicare e in quale ordine, anche in presenza di errori e cancellazioni. Il Capitolo~\ref{cap:requisiti} parte da qui per definire i requisiti che un \texttt{AgentExecutor} riutilizzabile da agenti diversi deve soddisfare.
