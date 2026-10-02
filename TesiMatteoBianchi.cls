@@ -62,6 +62,7 @@
 % Generazione del FRONTESPIZIO
 \newcommand{\generaFrontespizio}{
    \thispagestyle{empty}
+   \enlargethispage{3cm}
    \begin{center}
       \vspace{10mm}
       {\includegraphics[width=0.4 \linewidth]{figure/uniroma3-logo}} \\
@@ -82,7 +83,7 @@
       } \\
       %{\HUGE \@titolo} \\
       \vspace{15mm}
-      {\large Laureando \\ \textbf{\@autore} \\ Matricola \@matricola} \\
+      {\large Laureando \\ \textbf{\@autore}} \\
       \vspace{7mm}
 
         %
@@ -92,13 +93,13 @@
 %
 % ... oppure scommenta questo blocco
 %
-      \begin{tabular}{c  @{\hspace{2.5cm}} c}
-        Relatore & Correlatore \\
-        \textbf{\@relatore} & \textbf{\@correlatore} \\
-      \end{tabular} \\
+      \begin{tabular}[t]{c  @{\hspace{2.5cm}} c}
+        Relatore & Correlatori \\
+        \textbf{\@relatore} & \textbf{\begin{tabular}[t]{@{}c@{}}\@correlatore\end{tabular}} \\
+      \end{tabular}\par
 %
-      \vfill
-      {\large Anno Accademico \@annoAccademico} \\
+      \vspace*{\fill}
+      {\large Anno Accademico \@annoAccademico}
    \end{center}
    \newpage 
 }
