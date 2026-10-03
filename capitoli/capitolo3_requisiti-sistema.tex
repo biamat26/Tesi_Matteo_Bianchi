@@ -21,7 +21,7 @@ In sintesi, il sistema doveva essere in grado di gestire correttamente la cancel
     \item \textbf{Vincoli temporali}: il tirocinio aveva una durata massima di tre mesi.
     \item \textbf{Linguaggio e framework della base di codice esistente}: Python e LangGraph, già adottati internamente dall'azienda per la costruzione degli agenti.
     \item \textbf{Utilizzo dell'SDK ufficiale del protocollo A2A}: su indicazione del tutor aziendale, la gestione dei Task doveva basarsi sull'SDK Python ufficiale del protocollo (\texttt{a2a-sdk}), anziché su uno sviluppo autonomo a partire dalla sola specifica.
-    \item \textbf{Gestione dell'ambiente Python}: su indicazione del tutor aziendale, per la gestione dei pacchetti e degli ambienti virtuali è stato utilizzato UV, al fine di evitare di alterare la configurazione Python del sistema locale.
+    \item \textbf{Gestione dell'ambiente Python}: su indicazione del tutor aziendale, per la gestione dei pacchetti e degli ambienti virtuali è stato utilizzato \texttt{uv}, al fine di evitare di alterare la configurazione Python del sistema locale.
     \item \textbf{Modello di concorrenza}: l'interfaccia \texttt{AgentExecutor} dell'SDK ufficiale definisce \texttt{execute} e \texttt{cancel} come metodi asincroni (\texttt{async def}) \cite{a2apythondocs}. Il framework esegue ogni Task all'interno di un task \texttt{asyncio} dedicato e, alla ricezione di una richiesta di cancellazione, invoca \texttt{cancel} e successivamente cancella tale task \cite{a2apythonsdk}; quali compiti restino, di conseguenza, all'\texttt{AgentExecutor} è discusso nella Sezione~\ref{sec:cancel}. L'uso di \texttt{asyncio} non è stato pertanto oggetto di una scelta autonoma, ma un vincolo diretto dell'interfaccia da implementare.
     \item \textbf{Metodo unico per l'esecuzione}: l'interfaccia \texttt{AgentExecutor} definisce \texttt{execute} come un unico metodo, invocato dal framework indipendentemente dalla modalità di invocazione richiesta dal client, sincrona o in streaming \cite{a2apythondocs}. La distinzione tra le due modalità non può pertanto essere gestita tramite due implementazioni separate a livello di interfaccia.
 \end{itemize}
@@ -49,19 +49,19 @@ Per consentirne il riferimento puntuale nei capitoli successivi, a ciascun requi
 \begin{description}
     \item[RF1] Il server deve esporre un unico endpoint JSON-RPC attraverso il quale il client possa inviare un messaggio, in modalità sincrona (\texttt{SendMessage}) o in streaming (\texttt{SendStreamingMessage}), e richiedere la cancellazione di un Task (\texttt{CancelTask}).
 
-    \item[RF2] Nella modalità streaming, il client deve ricevere una sequenza ordinata di eventi (\texttt{TaskStatusUpdateEvent}, \texttt{TaskArtifactUpdateEvent}) che rifletta l'avanzamento del Task fino al raggiungimento di uno stato terminale o interrotto (ad esempio, \texttt{TASK\_STATE\_INPUT\_REQUIRED}) \cite{a2aspec}.
+    \item[RF2] Nella modalità streaming, il client deve ricevere una sequenza ordinata di eventi (\texttt{TaskStatusUpdateEvent}, \texttt{TaskArtifactUpdateEvent}) che rifletta l'avanzamento del Task fino al raggiungimento di uno stato terminale o interrotto (ad esempio, \texttt{INPUT\_REQUIRED}) \cite{a2aspec}.
 
-    \item[RF3] Una richiesta di cancellazione relativa a un Task in esecuzione deve interromperne l'elaborazione, così da non consumare ulteriori risorse computazionali, e portare il Task nello stato terminale \texttt{TASK\_STATE\_CANCELED}. In caso di comunicazione in streaming, il client deve ricevere tutti gli eventi di avanzamento pubblicati prima della cancellazione, seguiti dall'evento che porta il Task in \texttt{TASK\_STATE\_CANCELED}.
+    \item[RF3] Una richiesta di cancellazione relativa a un Task in esecuzione deve interromperne l'elaborazione, così da non consumare ulteriori risorse computazionali, e portare il Task nello stato terminale \texttt{CANCELED}. In caso di comunicazione in streaming, il client deve ricevere tutti gli eventi di avanzamento pubblicati prima della cancellazione, seguiti dall'evento che porta il Task in \texttt{CANCELED}.
 
-    \item[RF4] Una richiesta di cancellazione relativa a un Task non ancora giunto in uno stato terminale, ma attualmente non in esecuzione (tipicamente un Task in \texttt{TASK\_STATE\_INPUT\_REQUIRED}, in attesa di un nuovo messaggio dell'utente), deve portare il Task direttamente nello stato \texttt{TASK\_STATE\_CANCELED}.
+    \item[RF4] Una richiesta di cancellazione relativa a un Task non ancora giunto in uno stato terminale, ma attualmente non in esecuzione (tipicamente un Task in \texttt{INPUT\_REQUIRED}, in attesa di un nuovo messaggio dell'utente), deve portare il Task direttamente nello stato \texttt{CANCELED}.
 
-    \item[RF5] Una richiesta di cancellazione relativa a un Task che ha già raggiunto uno stato terminale (\texttt{TASK\_STATE\_COMPLETED}, \texttt{TASK\_STATE\_FAILED}, \texttt{TASK\_STATE\_CANCELED}, \texttt{TASK\_STATE\_REJECTED}) deve essere rifiutata con un errore esplicito (\texttt{TaskNotCancelableError}), anziché essere ignorata silenziosamente \cite{a2aspec}.
+    \item[RF5] Una richiesta di cancellazione relativa a un Task che ha già raggiunto uno stato terminale (\texttt{COMPLETED}, \texttt{FAILED}, \texttt{CANCELED}, \texttt{REJECTED}) deve essere rifiutata con un errore esplicito (\texttt{TaskNotCancelableError}), anziché essere ignorata silenziosamente \cite{a2aspec}.
 
     \item[RF6] Una richiesta di cancellazione o di invio di un nuovo messaggio riferita a un Task inesistente deve essere rifiutata con un errore specifico (\texttt{TaskNotFoundError}) \cite{a2aspec}.
 
     \item[RF7] Un Task giunto in uno stato terminale non deve accettare ulteriori messaggi: l'invio di un nuovo messaggio verso un Task in questo stato deve essere rifiutato con un errore specifico (\texttt{UnsupportedOperationError}) \cite{a2aspec}.
 
-    \item[RF8] Più richieste di cancellazione relative allo stesso Task non devono alterarne lo stato oltre la prima: il Task resta in \texttt{TASK\_STATE\_CANCELED}, e le richieste successive vengono rifiutate secondo quanto previsto da RF5.
+    \item[RF8] Più richieste di cancellazione relative allo stesso Task non devono alterarne lo stato oltre la prima: il Task resta in \texttt{CANCELED}, e le richieste successive vengono rifiutate secondo quanto previsto da RF5.
 
     \item[RF9] Il sistema deve gestire l'esecuzione concorrente di più Task, mantenendo per ciascuno una gestione indipendente del proprio stato e del proprio ciclo di vita.
 

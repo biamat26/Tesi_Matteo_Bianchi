@@ -9,7 +9,7 @@ Questo capitolo descrive la progettazione della gestione del ciclo di vita di un
 
 Come stabilito nel Capitolo~\ref{cap:requisiti}, l'interfaccia \texttt{AgentExecutor} prevede un unico metodo \texttt{execute}, invocato dal framework indipendentemente dalla modalità scelta dal client. I requisiti RF1 e RF2 richiedono però di gestire correttamente sia le chiamate sincrone (\texttt{SendMessage}) sia quelle in streaming (\texttt{SendStreamingMessage}), e in quest'ultimo caso di restituire anche tutti gli eventi intermedi. Il problema progettuale consisteva quindi nel soddisfare entrambe le modalità con un'unica implementazione di \texttt{execute}.
 
-Una prima soluzione possibile consiste nel far verificare a \texttt{execute}, a ogni invocazione, quale operazione abbia generato la richiesta, scegliendo di conseguenza quale metodo del grafo LangGraph chiamare. Con \texttt{SendMessage}, \texttt{execute} utilizzerebbe \texttt{ainvoke}, un metodo che esegue tutta l'elaborazione e restituisce un unico valore, cioè lo stato finale, solo alla fine. Con \texttt{SendStreamingMessage} utilizzerebbe invece \texttt{astream}, che restituisce lo stato del grafo dopo ogni passo, così da pubblicare i relativi eventi sulla \texttt{EventQueue} mentre l'esecuzione avanza. Si avrebbero quindi due percorsi distinti nella stessa funzione, scelti con un controllo condizionale all'inizio di \texttt{execute}. Questo era l'approccio adottato dall'executor già presente in azienda, che sceglieva la modalità in base al nome del metodo RPC contenuto nella richiesta.
+Una prima soluzione possibile consiste nel far verificare a \texttt{execute}, a ogni invocazione, quale operazione abbia generato la richiesta, scegliendo di conseguenza quale metodo del grafo LangGraph chiamare. Con \texttt{SendMessage}, \texttt{execute} utilizzerebbe \texttt{ainvoke}, un metodo che esegue tutta l'elaborazione e restituisce un unico valore, cioè lo stato finale, solo alla fine. Con \texttt{SendStreamingMessage} utilizzerebbe invece \texttt{astream}, che restituisce un aggiornamento dopo ogni passo del grafo, così da pubblicare i relativi eventi sulla \texttt{EventQueue} mentre l'esecuzione avanza. Si avrebbero quindi due percorsi distinti nella stessa funzione, scelti con un controllo condizionale all'inizio di \texttt{execute}. Questo era l'approccio adottato dall'executor già presente in azienda, che sceglieva la modalità in base al nome del metodo RPC contenuto nella richiesta.
 
 Questo approccio presenta però due limiti concreti. Il primo è che introduce nella logica applicativa dell'agente un'informazione che appartiene al livello di trasporto, cioè quale operazione RPC abbia originato la richiesta, in contrasto con il principio di separazione delle responsabilità. Il secondo è che costringe a mantenere due percorsi di codice paralleli e in gran parte ridondanti, destinati a evolvere in modo indipendente. Ogni caso particolare, come la richiesta di ulteriori input all'utente, andrebbe gestito allo stesso modo in entrambi i percorsi, e un aggiornamento applicato a uno solo dei due renderebbe diverso il comportamento delle due modalità senza che la differenza risulti evidente.
 
@@ -21,7 +21,7 @@ Questo approccio presenta però due limiti concreti. Il primo è che introduce n
         msg/.style={-{Stealth[length=2.5mm]}, thick, font=\scriptsize}
     ]
         \node[actor] (c1) at (0,0) {Client};
-        \node[actor] (h1) at (4.5,0) {RequestHandler};
+        \node[actor] (h1) at (4.5,0) {DefaultRequestHandler};
         \node[actor] (e1) at (9,0) {AgentExecutor};
         \draw[lifeline] (c1) -- ++(0,-5.0);
         \draw[lifeline] (h1) -- ++(0,-5.0);
@@ -45,7 +45,7 @@ Questo approccio presenta però due limiti concreti. Il primo è che introduce n
         msg/.style={-{Stealth[length=2.5mm]}, thick, font=\scriptsize}
     ]
         \node[actor] (c2) at (0,0) {Client};
-        \node[actor] (h2) at (4.5,0) {RequestHandler};
+        \node[actor] (h2) at (4.5,0) {DefaultRequestHandler};
         \node[actor] (e2) at (9,0) {AgentExecutor};
         \draw[lifeline] (c2) -- ++(0,-6.5);
         \draw[lifeline] (h2) -- ++(0,-6.5);
@@ -67,15 +67,15 @@ Questo approccio presenta però due limiti concreti. Il primo è che introduce n
 
         \node[font=\scriptsize] at (4.5,-7) {(b) \texttt{SendStreamingMessage} -- ogni evento è inoltrato subito};
     \end{tikzpicture}
-    \caption{La stessa esecuzione di \texttt{execute} con due modalità di consegna al client, gestite interamente dal \texttt{RequestHandler}.}
+    \caption{La stessa esecuzione di \texttt{execute} con due modalità di consegna al client, gestite interamente dal \texttt{DefaultRequestHandler}.}
     \label{fig:sequence-comparison}
 \end{figure}
 
 Si è quindi scelto di adottare un'unica strategia di esecuzione, indipendente dalla modalità di invocazione. \texttt{execute} itera sul grafo LangGraph sempre in streaming, tramite \texttt{astream}, e pubblica un evento sulla \texttt{EventQueue} a ogni passo significativo. È poi il framework, e in particolare il \texttt{DefaultRequestHandler}, a stabilire come consumare questa sequenza di eventi \cite{a2apythontutorial} in base alla modalità con cui il client ha effettuato la richiesta, come mostrato in Figura~\ref{fig:sequence-comparison}.
 
-Nel pannello (a) il client invia una richiesta \texttt{SendMessage}. Il \texttt{RequestHandler} la riceve e invoca \texttt{execute}, che durante l'esecuzione pubblica sulla \texttt{EventQueue} gli eventi \texttt{SUBMITTED} e \texttt{WORKING}. Il \texttt{RequestHandler} riceve questi eventi ma non li inoltra al client. La connessione resta aperta, senza che vi transiti alcun dato, finché non viene pubblicato un evento che porta il Task in uno stato terminale (\texttt{COMPLETED}, \texttt{FAILED}, \texttt{CANCELED} o \texttt{REJECTED}) oppure interrotto (\texttt{INPUT\_REQUIRED} o \texttt{AUTH\_REQUIRED}) \cite{a2aspec}. Solo a quel punto il \texttt{RequestHandler} restituisce al client un'unica risposta, che contiene il Task. Questo è il comportamento predefinito, ma il client può anche richiedere una risposta immediata con l'opzione \texttt{return\_immediately}, lasciando che l'elaborazione continui in background \cite{a2apythonsdk}.
+Nel pannello (a) il client invia una richiesta \texttt{SendMessage}. Il gestore delle richieste (\texttt{Default\allowbreak Request\allowbreak Handler}) la riceve e invoca \texttt{execute}, che durante l'esecuzione pubblica sulla \texttt{EventQueue} gli eventi \texttt{SUBMITTED} e \texttt{WORKING}. Il gestore riceve questi eventi ma non li inoltra al client. La connessione resta aperta, senza che vi transiti alcun dato, finché non viene pubblicato un evento che porta il Task in uno stato terminale (\texttt{COMPLETED}, \texttt{FAILED}, \texttt{CANCELED} o \texttt{REJECTED}) oppure interrotto (\texttt{INPUT\_REQUIRED} o \texttt{AUTH\_REQUIRED}) \cite{a2aspec}. Solo a quel punto il gestore restituisce al client un'unica risposta, che contiene il Task. Resta valida, come visto nella Sezione~\ref{sec:a2a-architettura}, la possibilità per il client di chiedere una risposta immediata con \texttt{return\_immediately}.
 
-Nel pannello (b) la stessa esecuzione di \texttt{execute} parte da una richiesta \texttt{SendStreamingMessage}. Anche qui la connessione resta aperta per tutta l'esecuzione, ma il \texttt{RequestHandler} si comporta diversamente. La risposta è uno stream di eventi, e ogni evento pubblicato sulla \texttt{EventQueue} viene inoltrato al client non appena ricevuto. Lo stream si chiude dopo l'evento che porta il Task in uno stato terminale o interrotto.
+Nel pannello (b) la stessa esecuzione di \texttt{execute} parte da una richiesta \texttt{SendStreamingMessage}. Anche qui la connessione resta aperta per tutta l'esecuzione, ma il gestore si comporta diversamente. La risposta è uno stream di eventi, e ogni evento pubblicato sulla \texttt{EventQueue} viene inoltrato al client non appena ricevuto. Lo stream si chiude dopo l'evento che porta il Task in uno stato terminale o interrotto.
 
 Durante l'esecuzione il Task passa attraverso una serie di stati, che \texttt{execute} comunica esplicitamente tramite il \texttt{TaskUpdater} e che sono riassunti in Figura~\ref{fig:task-lifecycle} (per brevità, nel diagramma è omesso il prefisso \texttt{TASK\_STATE\_} comune a tutti gli stati).
 

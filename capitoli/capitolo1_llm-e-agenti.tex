@@ -18,8 +18,8 @@ di agire tramite strumenti esterni. La Sezione~\ref{sec:definizione-agent} defin
 Il linguaggio è lo strumento con cui l'essere umano dà forma ai propri pensieri per esprimerli e condividerli con il resto del mondo. 
 Riprodurre questo processo nelle macchine è da decenni uno degli obiettivi centrali dell'intelligenza artificiale. 
 Seguendo Zhao et al.\ \cite{zhao2023survey}, lo sviluppo dei modelli di linguaggio può essere diviso in quattro fasi 
-(Figura~\ref{fig:evoluzione-lm}), ciascuna nata per superare i limiti della precedente. Dunque, questa sezione si propone
-di descrivere queste fasi, con particolare attenzione agli LLM, che sono il punto di partenza per la definizione di agente.
+(Figura~\ref{fig:evoluzione-lm}), ciascuna nata per superare i limiti della precedente. Questa sezione descrive
+le quattro fasi, con particolare attenzione agli LLM, che sono il punto di partenza per la definizione di agente.
 
 \begin{figure}[h]
     \centering
@@ -94,7 +94,7 @@ abbandona le reti ricorrenti in favore di un'architettura basata sul meccanismo 
 
 dove $\mathcal{M}$ indica l'insieme delle posizioni mascherate e $w_{\setminus \mathcal{M}}$ la sequenza di input privata dei token mascherati. A differenza della predizione della parola successiva vista in precedenza, che sfrutta solo il contesto a sinistra, questo obiettivo di pre-training permette al modello di condizionare la propria previsione sull'intero contesto della frase.
 
-Una volta completato il pre-training, il modello viene adattato a uno specifico compito finale (come la classificazione del testo o il question answering). A tal fine, si integra uno strato dedicato al task al di sopra delle rappresentazioni pre-addestrate e si affinano i pesi dell'intera architettura — o, in alternativa, del solo nuovo strato — su un dataset etichettato di dimensioni contenute. Questa seconda fase prende il nome di fine-tuning. Il paradigma basato su pre-training e fine-tuning ha consentito di raggiungere prestazioni allo stato dell'arte in un ampio spettro di applicazioni del linguaggio naturale, riducendo drasticamente il fabbisogno di dati etichettati rispetto all'addestramento ex novo di un modello dedicato.
+Una volta completato il pre-training, il modello viene adattato a uno specifico compito finale (come la classificazione del testo o il question answering). A tal fine, si integra uno strato dedicato al task al di sopra delle rappresentazioni pre-addestrate e si affinano i pesi dell'intera architettura -- o, in alternativa, del solo nuovo strato -- su un dataset etichettato di dimensioni contenute. Questa seconda fase prende il nome di fine-tuning. Il paradigma basato su pre-training e fine-tuning ha consentito di raggiungere prestazioni allo stato dell'arte in un ampio spettro di applicazioni del linguaggio naturale, riducendo drasticamente il fabbisogno di dati etichettati rispetto all'addestramento ex novo di un modello dedicato.
 
 \subsection{Large Language Model (LLM)}
 Infine, l'osservazione secondo cui l'aumento della dimensione del modello, dei dati di addestramento e della quantità di calcolo impiegata porta a un miglioramento prevedibile delle prestazioni -- un fenomeno noto come scaling law -- ha spinto i ricercatori a esplorare i limiti di questo effetto, addestrando PLM di dimensioni sempre maggiori, fino a raggiungere ordini di grandezza di decine o centinaia di miliardi di parametri (ad esempio, i 175 miliardi di parametri di GPT-3 o i 540 miliardi di PaLM) \cite{zhao2023survey}.
@@ -205,7 +205,7 @@ Il fattore interessante è il secondo, perché la risposta dipende anche dal rag
 
 Con il prompting standard il modello risponde 27 invece di 9, e senza passaggi intermedi non si riesce a capire dove sia l'errore. Con Chain-of-Thought il modello calcola le mele rimaste dopo il pranzo ($23 - 20 = 3$), aggiunge quelle comprate ($3 + 6 = 9$) e arriva al risultato giusto.
 
-La tecnica funziona perché scompone il problema in sottoproblemi più semplici, ognuno dei quali il modello riesce a risolvere con buona affidabilità, un po' come nel \emph{divide et impera}. Ogni risultato intermedio, una volta scritto, entra nel contesto e può essere usato nei passaggi successivi; nell'esempio, il 3 viene prima calcolato e poi riutilizzato. In pratica il testo generato fa da memoria di lavoro, che nell'architettura del modello non esiste. Esiste anche un risultato teorico a supporto: Feng et al.\ \cite{feng2023cot} dimostrano che alcuni problemi, tra cui la valutazione di espressioni aritmetiche, non possono essere risolti da un modello di linguaggio di dimensione limitata che produce direttamente la risposta, mentre diventano risolvibili se il modello può generare i passaggi intermedi.
+La tecnica funziona perché scompone il problema in sottoproblemi più semplici, ognuno dei quali il modello riesce a risolvere con buona affidabilità, un po' come nel \emph{divide et impera}. Ogni risultato intermedio, una volta scritto, entra nel contesto e può essere usato nei passaggi successivi; nell'esempio, il 3 viene prima calcolato e poi riutilizzato. In pratica il testo generato fa da memoria di lavoro, che nell'architettura del modello non esiste. Esiste anche un risultato teorico a supporto: Feng et al.\ \cite{feng2023cot} dimostrano che alcuni problemi, tra cui la valutazione di espressioni aritmetiche, non possono essere risolti da un Transformer di profondità limitata che produce direttamente la risposta, a meno che la sua dimensione non cresca in modo super-polinomiale, mentre diventano risolvibili da un modello di dimensione costante se questo può generare i passaggi intermedi.
 
 Kojima et al.\ \cite{kojima2022zeroshot} hanno poi osservato che gli esempi non sono strettamente necessari. Aggiungendo alla domanda la sola frase \emph{``Let's think step by step''} (``Ragioniamo passo dopo passo'') il modello produce da solo una catena di ragionamento. Più recentemente l'idea è passata dal prompting all'addestramento, con i cosiddetti modelli di ragionamento, addestrati a generare lunghe catene di ragionamento prima di rispondere \cite{deepseek2025r1}.
 
@@ -228,7 +228,7 @@ e(c, r) = \langle\texttt{API}\rangle\; a_c(i_c) \rightarrow r\; \langle\texttt{/
 \]
 In pratica i token speciali sono resi con i caratteri ``\texttt{[}'', ``\texttt{]}'' e ``\texttt{->}''. Un testo con una chiamata alla calcolatrice è ad esempio il seguente:
 \begin{quote}
-\small Of the 1,400 participants, 400 (i.e., \texttt{[Calculator(400 / 1400) -> 0.29]} 29\%) passed the test.
+\small Out of 1400 participants, 400 (or \texttt{[Calculator(400 / 1400) -> 0.29]} 29\%) passed the test.
 \end{quote}
 In questo modo il testo rimane una normale sequenza di token, che il modello può imparare a generare come qualsiasi altro testo.
 
@@ -421,7 +421,7 @@ Il concetto di agente è molto più vecchio degli LLM. Secondo la definizione cl
 \[
 f : \mathcal{O}^* \rightarrow \mathcal{A}
 \]
-dove $\mathcal{O}^*$ è l'insieme delle sequenze finite di osservazioni e $\mathcal{A}$ l'insieme delle azioni possibili. La definizione è molto generale: un termostato, un robot e un programma che opera su un sistema informatico sono tutti agenti, e cambiano l'ambiente in cui operano, ciò che possono percepire e le azioni disponibili.
+dove $\mathcal{O}^*$ è l'insieme delle sequenze finite di osservazioni e $\mathcal{A}$ l'insieme delle azioni possibili. La definizione è molto generale: un termostato, un robot e un programma che opera su un sistema informatico sono tutti agenti, e differiscono per l'ambiente in cui operano, per ciò che possono percepire e per le azioni disponibili.
 
 In un \emph{agente basato su LLM} questa funzione è realizzata da un modello di linguaggio. La formulazione è quella di ReAct vista nella Sezione~\ref{sec:react}: l'LLM sceglie l'azione $a_t$ in base al contesto $c_t$, che contiene la storia di osservazioni e azioni,
 \[
@@ -502,4 +502,4 @@ Un singolo agente ha comunque un ambito limitato, perché profilo, strumenti e m
 
 Far collaborare più agenti pone però un problema di interoperabilità. Gli agenti possono essere sviluppati da organizzazioni diverse, con framework e linguaggi diversi, e ognuno espone la propria logica con interfacce proprie. Per farli cooperare serve un protocollo comune che stabilisca come un agente possa scoprire le capacità di un altro, inviargli un compito, seguirne l'avanzamento e riceverne il risultato, senza conoscerne l'implementazione interna. Questo è l'obiettivo del protocollo Agent2Agent (A2A) \cite{a2aspec}, di cui si occupa il capitolo successivo.
 
-A2A va distinto dal Model Context Protocol (MCP) \cite{mcp2025spec}, un altro protocollo diffuso nello stesso periodo. I due lavorano a livelli diversi e sono complementari. MCP standardizza il modo in cui un agente accede a strumenti e risorse esterne, quindi riguarda il suo modulo di azione. A2A standardizza invece la comunicazione tra agenti distinti, che si trattano a vicenda come sistemi opachi: di un agente si conoscono le capacità, ma non il funzionamento interno.
+A2A va distinto dal Model Context Protocol (MCP), un altro protocollo diffuso nello stesso periodo, che riguarda invece il modo in cui un singolo agente accede ai propri strumenti; la differenza tra i due è discussa nella Sezione~\ref{sec:perche-a2a}.

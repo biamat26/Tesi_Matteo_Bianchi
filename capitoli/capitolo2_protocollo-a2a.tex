@@ -17,8 +17,8 @@ Si consideri un'azienda che mette a disposizione dei propri dipendenti un agente
   che a sua volta lo gestisce con un proprio agente, sviluppato con un altro framework e in esecuzione sui server dell'agenzia stessa. I due agenti 
   sono stati progettati da organizzazioni diverse, in modo del tutto indipendente, e non hanno un modo comune per comunicare.
 
-Senza uno standard, per farli collaborare l'azienda dovrebbe scrivere un'integrazione su misura. Quindi dovrebbe: studiare l'interfaccia esposta dall'agenzia, 
-adattarsi al suo formato dei messaggi, capire come sapere se la prenotazione è andata a buon fine o meno e capire come gestire il caso in cui l'agente dell'agenzia abbia bisogno 
+Senza uno standard, per farli collaborare l'azienda dovrebbe scrivere un'integrazione su misura. Dovrebbe cioè studiare l'interfaccia esposta dall'agenzia, 
+adattarsi al suo formato dei messaggi, capire come verificare se la prenotazione è andata a buon fine e come gestire il caso in cui l'agente dell'agenzia abbia bisogno 
 di altre informazioni, ad esempio il budget massimo per l'albergo. Lo stesso lavoro andrebbe ripetuto per ogni altro agente con cui si vuole collaborare e ogni
 integrazione sarebbe diversa dalle altre. Con $N$ agenti che devono comunicare tra loro si arriva fino a $N(N-1)/2$ integrazioni distinte, mentre con un protocollo
  comune ciascun agente deve implementarlo una sola volta.
@@ -42,12 +42,12 @@ Per far comunicare gli agenti, si potrebbe pensare di esporre l'agente dell'agen
 MCP, però, è stato progettato per definire il rapporto tra un agente e i suoi strumenti. Uno strumento, infatti, ha un'interfaccia fissa, descritta da un nome 
 e da uno schema dei parametri, riceve una chiamata e restituisce un risultato, ed è il client a decidere come e quando usarlo. Un agente remoto, invece, 
 riceve una richiesta in linguaggio naturale, decide da solo come soddisfarla, può chiedere chiarimenti o rifiutare il compito e porta avanti con il client
- un'interazione duratura. Trattarlo come se fosse uno strumento significherebbe ridurlo a una funzione e perdere proprio queste caratteristiche.
+ un'interazione duratura. Trattarlo come se fosse uno strumento significherebbe ridurlo a una funzione e perdere proprio queste caratteristiche.%
 \footnote{La revisione di novembre 2025 della specifica MCP ha introdotto, in forma sperimentale, 
    i \emph{Tasks}, che permettono di eseguire in modo asincrono operazioni di lunga durata \cite{mcp2025spec}. In questo modo MCP si avvicina ad A2A nella gestione dei compiti lunghi, ma il modello di fondo resta quello del rapporto tra un client e uno strumento.}
 
 Quindi, i due protocolli lavorano a livelli diversi e possono essere usati insieme. Come mostra la Figura~\ref{fig:a2a-mcp}, ciascun agente usa MCP per accedere ai propri
- strumenti mentre utilizzzano A2A per comunicare con gli altri agenti. Nell'esempio, l'agente aziendale consulta il calendario tramite MCP e delega la prenotazione 
+ strumenti e A2A per comunicare con gli altri agenti. Nell'esempio, l'agente aziendale consulta il calendario tramite MCP e delega la prenotazione 
  all'agente dell'agenzia tramite A2A. Quest'ultimo, a sua volta, usa MCP per interrogare i sistemi delle compagnie aeree e degli alberghi, senza che l'agente aziendale ne sappia nulla.
 
 \begin{figure}[htbp]
@@ -106,7 +106,7 @@ La specifica dichiara cinque principi di progettazione \cite{a2aspec}, che corri
     \item \textbf{Riservatezza dell'implementazione.} Gli agenti collaborano senza condividere il proprio stato interno, la memoria o gli strumenti. Questa scelta risponde al requisito di riservatezza dell'implementazione ed è la principale differenza rispetto al modello di MCP.
 \end{itemize}
 
-Il requisito di scoperta non compare tra i principi, ma è uno degli obiettivi dichiarati del protocollo ed è affidato all'Agent Card, un documento con cui ogni agente descrive le proprie capacità. L'Agent Card è il primo degli oggetti del protocollo descritti nella Sezione~\ref{sec:a2a-architettura}, insieme a Message, Task e Artifact.
+Il requisito di individuazione degli agenti non compare tra i principi, ma è uno degli obiettivi dichiarati del protocollo ed è affidato all'Agent Card, un documento con cui ogni agente descrive le proprie capacità. L'Agent Card è il primo degli oggetti del protocollo descritti nella Sezione~\ref{sec:a2a-architettura}, insieme a Message, Task e Artifact.
 
 \section{Architettura e ciclo di vita dei Task}
 \label{sec:a2a-architettura}
@@ -183,7 +183,7 @@ La Figura~\ref{fig:agent-card} mostra una possibile Agent Card per l'agente dell
       "description": "Cerca e prenota volo e albergo per un viaggio
                       di lavoro, rispettando date e budget indicati.",
       "tags": ["viaggi", "voli", "alberghi"],
-      "examples": ["Prenota volo e albergo a Milano dal 12 al 14 novembre"] }
+      "examples": ["Prenota volo e albergo a Roma dal 12 al 14 novembre"] }
   ]
 }
 \end{verbatim}
@@ -219,8 +219,7 @@ dall'agente remoto. I suoi campi principali sono:
 Il contenuto vero e proprio è diviso in \emph{Part}. Ogni Part contiene esattamente uno dei seguenti tipi di dato: testo (\texttt{text}), il contenuto binario
 di un file codificato in base64 (\texttt{raw}), un riferimento a un file tramite URL (\texttt{url}) oppure dati strutturati in formato JSON (\texttt{data}). A 
 questo si possono aggiungere il tipo MIME del contenuto (\texttt{mediaType}), un nome di file e dei metadati. Grazie alle Part un singolo messaggio può contenere, 
-ad esempio, una richiesta in linguaggio naturale insieme a un oggetto JSON con le date del viaggio, ed è in questo modo che il protocollo realizza il principio di
- indipendenza dalla modalità.
+ad esempio, una richiesta in linguaggio naturale insieme a un oggetto JSON con le date del viaggio, ed è in questo modo che il protocollo realizza il principio dei formati di contenuto diversi.
 
 Un messaggio con cui l'agente aziendale avvia la prenotazione potrebbe essere il seguente:
 
@@ -232,8 +231,8 @@ Un messaggio con cui l'agente aziendale avvia la prenotazione potrebbe essere il
   "messageId": "msg-001",
   "role": "ROLE_USER",
   "parts": [
-    { "text": "Prenota volo e albergo per una trasferta a Milano." },
-    { "data": { "partenza": "Roma", "andata": "2026-11-12",
+    { "text": "Prenota volo e albergo per una trasferta a Roma." },
+    { "data": { "partenza": "Milano", "andata": "2026-11-12",
                 "ritorno": "2026-11-14" },
       "mediaType": "application/json" }
   ]
@@ -290,11 +289,13 @@ ciascuna con il nome che assume nel binding JSON-RPC.
     \label{tab:operazioni-a2a}
 \end{table}
 
-La richiesta più importante è \texttt{SendMessage}. In genere il client resta in attesa della risposta, che arriva solo quando il Task si conclude o quando il server ha bisogno di un suo intervento. Il client può però chiedere una risposta immediata con il parametro \texttt{return\allowbreak Immediately}; in questo caso riceve subito il Task appena creato, mentre l'elaborazione continua in background.
+La richiesta più importante è \texttt{SendMessage}. Nella modalità predefinita, detta \emph{sincrona}, il client resta in attesa della risposta, che arriva solo quando il Task si conclude o quando il server ha bisogno di un suo intervento. Il client può però chiedere una risposta immediata con il parametro \texttt{return\allowbreak Immediately}; in questo caso riceve subito il Task appena creato, mentre l'elaborazione continua in background.
 
-Per seguire un Task che prosegue nel tempo il protocollo offre tre meccanismi. Il più semplice è il \emph{polling}, in cui il client chiama periodicamente \texttt{GetTask}, ma introduce ritardi e richieste inutili. Le \emph{notifiche push} consentono al server di inviare gli aggiornamenti a un indirizzo (\emph{webhook}) registrato dal client, e sono adatte ai compiti molto lunghi. Questa tesi si concentra sul terzo meccanismo, lo \emph{streaming}, in cui il server invia gli eventi man mano che si verificano, tramite \texttt{Send\allowbreak Streaming\allowbreak Message} o \texttt{Subscribe\allowbreak To\allowbreak Task}. Nei binding basati su HTTP gli eventi viaggiano come Server-Sent Events e sono di due tipi: \texttt{Task\allowbreak Status\allowbreak Update\allowbreak Event}, per i cambi di stato, e \texttt{Task\allowbreak Artifact\allowbreak Update\allowbreak Event}, per gli Artifact nuovi o aggiornati, che possono anche essere inviati a pezzi.
+Per seguire un Task che prosegue nel tempo il protocollo offre tre meccanismi. Il più semplice è il \emph{polling}, in cui il client chiama periodicamente \texttt{GetTask}, ma introduce ritardi e richieste inutili. Le \emph{notifiche push} consentono al server di inviare gli aggiornamenti a un indirizzo (\emph{webhook}) registrato dal client, e sono adatte ai compiti molto lunghi. Il terzo meccanismo, che insieme alla modalità sincrona è quello considerato in questa tesi, è lo \emph{streaming}, in cui il server invia gli eventi man mano che si verificano, tramite \texttt{Send\allowbreak Streaming\allowbreak Message} o \texttt{Subscribe\allowbreak To\allowbreak Task}. Nei binding basati su HTTP gli eventi viaggiano come Server-Sent Events e sono di due tipi: \texttt{Task\allowbreak Status\allowbreak Update\allowbreak Event}, per i cambi di stato, e \texttt{Task\allowbreak Artifact\allowbreak Update\allowbreak Event}, per gli Artifact nuovi o aggiornati, che possono anche essere inviati a pezzi.
 
-Lo streaming e le notifiche push sono funzionalità opzionali, che il server deve dichiarare nel campo \texttt{capabilities} dell'Agent Card.\subsection{Il ciclo di vita del Task}
+Lo streaming e le notifiche push sono funzionalità opzionali, che il server deve dichiarare nel campo \texttt{capabilities} dell'Agent Card.
+
+\subsection{Il ciclo di vita del Task}
 
 Ogni Task attraversa una serie di stati, registrati nel campo \texttt{status}. La versione 1.0 ne definisce nove, riportati nella Tabella~\ref{tab:stati-task}. Nella serializzazione JSON gli stati compaiono con il prefisso \texttt{TASK\_STATE\_} (ad esempio \texttt{TASK\_\allowbreak STATE\_\allowbreak INPUT\_\allowbreak REQUIRED}); nel testo si usa per brevità il nome senza prefisso.
 
@@ -305,7 +306,7 @@ Ogni Task attraversa una serie di stati, registrati nel campo \texttt{status}. L
         \hline
         \textbf{Stato} & \textbf{Tipo} & \textbf{Significato} \\
         \hline
-        \texttt{UNSPECIFIED} & -- -- -- & Valore predefinito, indica uno stato sconosciuto. \\
+        \texttt{UNSPECIFIED} & -- & Valore predefinito, indica uno stato sconosciuto. \\
         \texttt{SUBMITTED} & attivo & Il Task è stato ricevuto e accettato, ma l'elaborazione non è ancora iniziata. \\
         \texttt{WORKING} & attivo & L'agente sta elaborando il Task. \\
         \texttt{INPUT\_\allowbreak REQUIRED} & interrotto & L'agente ha bisogno di altre informazioni dal client per proseguire. \\
@@ -379,7 +380,7 @@ Gli \textbf{stati terminali} sono \texttt{COMPLETED}, \texttt{FAILED}, \texttt{C
 
 La cancellazione avviene su richiesta del client, con l'operazione \texttt{CancelTask}. Il server prova a interrompere il lavoro e restituisce il Task aggiornato, ma l'esito non è garantito: se il Task è già in uno stato terminale, o se in quel momento non può essere interrotto, il server risponde con l'errore \texttt{Task\allowbreak Not\allowbreak Cancelable\allowbreak Error} \cite{a2aspec}.
 
-La Figura~\ref{fig:esempio-ciclo} mostra come evolve il Task nello scenario della trasferta. L'agente aziendale invia la richiesta con \texttt{SendMessage}. L'agente dell'agenzia crea il Task, inizia a cercare i voli e si accorge che, per scegliere l'albergo, gli manca il budget: porta quindi il Task in \texttt{INPUT\_\allowbreak REQUIRED} e, nel messaggio di stato, chiede quale sia la spesa massima per notte. Poiché \texttt{SendMessage} è bloccante fino a uno stato interrotto, a questo punto il client riceve la risposta con la domanda. L'agente aziendale ricava il budget dalle regole sui rimborsi e invia un secondo messaggio con lo stesso \texttt{taskId}. Il Task torna in \texttt{WORKING}, l'agente dell'agenzia completa la prenotazione, la allega come Artifact e porta il Task in \texttt{COMPLETED}.
+La Figura~\ref{fig:esempio-ciclo} mostra come evolve il Task nello scenario della trasferta. L'agente aziendale invia la richiesta con \texttt{SendMessage}. L'agente dell'agenzia crea il Task, inizia a cercare i voli e si accorge che, per scegliere l'albergo, gli manca il budget: porta quindi il Task in \texttt{INPUT\_\allowbreak REQUIRED} e, nel messaggio di stato, chiede quale sia la spesa massima per notte. Poiché in modalità sincrona la risposta a \texttt{SendMessage} arriva quando il Task raggiunge uno stato terminale o interrotto, a questo punto il client riceve la risposta con la domanda. L'agente aziendale ricava il budget dalle regole sui rimborsi e invia un secondo messaggio con lo stesso \texttt{taskId}. Il Task torna in \texttt{WORKING}, l'agente dell'agenzia completa la prenotazione, la allega come Artifact e porta il Task in \texttt{COMPLETED}.
 
 \begin{figure}[htbp]
     \centering
@@ -396,7 +397,7 @@ La Figura~\ref{fig:esempio-ciclo} mostra come evolve il Task nello scenario dell
         \draw[gray, dashed] (s.south) -- (7.5,-7.5);
 
         % Primo messaggio
-        \draw[msg] (0,-1.2) -- node[testo, above] {\texttt{SendMessage}: ``Prenota volo e albergo a Milano\ldots''} (7.5,-1.2);
+        \draw[msg] (0,-1.2) -- node[testo, above] {\texttt{SendMessage}: ``Prenota volo e albergo a Roma\ldots''} (7.5,-1.2);
         \node[stato] at (7.7,-1.5) {SUBMITTED};
         \node[stato] at (7.7,-2.1) {WORKING};
         \node[stato] at (7.7,-2.7) {INPUT\_REQUIRED};
