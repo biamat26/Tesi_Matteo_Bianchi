@@ -1,31 +1,54 @@
 \label{cap:protocollo-a2a}
 
-Alla fine del capitolo precedente si è visto che i compiti più complessi possono essere divisi tra più agenti specializzati, e che per farli collaborare serve un protocollo comune. Questo capitolo descrive il protocollo Agent2Agent (A2A), nato proprio con questo scopo. La Sezione~\ref{sec:perche-a2a} presenta il problema da cui nasce il protocollo e spiega perché gli standard già esistenti non erano adatti a risolverlo. La Sezione~\ref{sec:a2a-architettura} ne descrive l'architettura e gli oggetti principali, con particolare attenzione al ciclo di vita dei Task. La Sezione~\ref{sec:agent-executor} mostra infine come questo ciclo di vita viene gestito, nell'SDK Python ufficiale, dalla classe \texttt{AgentExecutor}, su cui si basa l'implementazione descritta nei capitoli successivi.
+Alla fine del capitolo precedente si è visto che i compiti più complessi possono essere divisi tra più agenti specializzati, e che per farli collaborare
+ serve un protocollo comune. Questo capitolo descrive il protocollo Agent2Agent (A2A), nato proprio con questo scopo. La Sezione~\ref{sec:perche-a2a} presenta 
+ il problema da cui nasce il protocollo e spiega perché gli standard già esistenti non erano adatti a risolverlo. La Sezione~\ref{sec:a2a-architettura} ne descrive
+  l'architettura e gli oggetti principali, con particolare attenzione al ciclo di vita dei Task. La Sezione~\ref{sec:agent-executor} mostra infine come questo ciclo
+   di vita viene gestito, nell'SDK Python ufficiale, dalla classe \texttt{AgentExecutor}, su cui si basa l'implementazione descritta nei capitoli successivi.
 
 \section{Perché A2A}
 \label{sec:perche-a2a}
 
 \subsection{Il problema dell'interoperabilità}
 
-Si consideri un'azienda che mette a disposizione dei propri dipendenti un agente di assistenza, sviluppato internamente con LangGraph. Un dipendente chiede all'agente di organizzargli una trasferta a Milano per la settimana successiva. L'agente conosce il calendario del dipendente e le regole aziendali sui rimborsi, ma non può prenotare voli e alberghi: questo servizio è offerto da un'agenzia viaggi esterna, che a sua volta lo gestisce con un proprio agente, sviluppato con un altro framework e in esecuzione sui server dell'agenzia. I due agenti sono stati progettati da organizzazioni diverse, in modo del tutto indipendente, e non hanno un modo comune per comunicare.
+Si consideri un'azienda che mette a disposizione dei propri dipendenti un agente di assistenza, sviluppato internamente con LangGraph.
+ Un dipendente chiede all'agente di organizzargli una trasferta a Roma per la settimana successiva. L'agente conosce il calendario del 
+ dipendente e le regole aziendali sui rimborsi, ma non può prenotare voli e alberghi. Questo servizio è offerto da un'agenzia di viaggi esterna,
+  che a sua volta lo gestisce con un proprio agente, sviluppato con un altro framework e in esecuzione sui server dell'agenzia stessa. I due agenti 
+  sono stati progettati da organizzazioni diverse, in modo del tutto indipendente, e non hanno un modo comune per comunicare.
 
-Senza uno standard, per farli collaborare l'azienda dovrebbe scrivere un'integrazione su misura: studiare l'interfaccia esposta dall'agenzia, adattarsi al suo formato dei messaggi, capire come sapere se la prenotazione è andata a buon fine e come gestire il caso in cui l'agente dell'agenzia abbia bisogno di altre informazioni, ad esempio il budget massimo per l'albergo. Lo stesso lavoro andrebbe ripetuto per ogni altro agente con cui collaborare, e ogni integrazione sarebbe diversa dalle altre. Con $N$ agenti che devono comunicare tra loro si arriva fino a $N(N-1)/2$ integrazioni distinte, mentre con un protocollo comune ciascun agente deve implementarlo una sola volta.
+Senza uno standard, per farli collaborare l'azienda dovrebbe scrivere un'integrazione su misura. Quindi dovrebbe: studiare l'interfaccia esposta dall'agenzia, 
+adattarsi al suo formato dei messaggi, capire come sapere se la prenotazione è andata a buon fine o meno e capire come gestire il caso in cui l'agente dell'agenzia abbia bisogno 
+di altre informazioni, ad esempio il budget massimo per l'albergo. Lo stesso lavoro andrebbe ripetuto per ogni altro agente con cui si vuole collaborare e ogni
+integrazione sarebbe diversa dalle altre. Con $N$ agenti che devono comunicare tra loro si arriva fino a $N(N-1)/2$ integrazioni distinte, mentre con un protocollo
+ comune ciascun agente deve implementarlo una sola volta.
 
 Dallo scenario si possono ricavare i requisiti che un protocollo di questo tipo deve soddisfare:
 
 \begin{itemize}
-    \item \textbf{Scoperta.} Un agente deve poter sapere quali capacità offre un altro agente e come contattarlo, senza dover leggere la sua documentazione.
+    \item \textbf{Individuazione degli agenti.} Un agente deve poter sapere quali capacità offre un altro agente e come contattarlo, senza dover leggere la sua documentazione.
     \item \textbf{Delega e monitoraggio.} Un agente deve poter affidare un compito a un altro e sapere in ogni momento in che stato si trova.
-    \item \textbf{Compiti lunghi e interattivi.} Una prenotazione può richiedere minuti o anche ore, ad esempio se serve la conferma di un operatore umano. Durante l'esecuzione, inoltre, l'agente remoto può aver bisogno di altre informazioni da chi gli ha affidato il compito.
+    \item \textbf{Compiti lunghi e interattivi.} Una prenotazione può richiedere minuti o anche ore, ad esempio se serve la conferma di un operatore umano. Inoltre, durante l'esecuzione, l'agente remoto può aver bisogno di altre informazioni da chi gli ha affidato il compito.
     \item \textbf{Sicurezza.} Gli agenti appartengono spesso a organizzazioni diverse e devono potersi autenticare e verificare di essere autorizzati a usare un certo servizio.
-    \item \textbf{Opacità.} L'agenzia non ha interesse a rendere visibili i prompt, gli strumenti o i fornitori che usa il suo agente, e l'azienda non dovrebbe dipendere da questi dettagli. La collaborazione deve basarsi solo su ciò che un agente sa fare, non su come lo fa.
+    \item \textbf{Riservatezza dell'implementazione.} L'agenzia non ha interesse a rendere visibili i prompt, gli strumenti o i fornitori che usa il suo agente e l'azienda non dovrebbe dipendere da questi dettagli. La collaborazione deve basarsi solo su ciò che un agente sa fare, non su come lo fa.
 \end{itemize}
 
 \subsection{Perché non basta MCP}
 
-Quando A2A è stato proposto esisteva già uno standard per collegare gli LLM a sistemi esterni, il Model Context Protocol (MCP), introdotto da Anthropic nel novembre 2024 \cite{anthropic2024mcp}. MCP definisce un'interfaccia uniforme, basata su JSON-RPC, con cui un'applicazione basata su LLM accede agli strumenti, ai dati e ai prompt messi a disposizione da un server. In teoria si potrebbe esporre l'agente dell'agenzia come un server MCP con uno strumento \texttt{prenota\_\allowbreak viaggio}. MCP però è stato progettato per il rapporto tra un agente e i suoi strumenti. Uno strumento ha un'interfaccia fissa, descritta da un nome e da uno schema dei parametri, riceve una chiamata e restituisce un risultato, ed è il client a decidere come e quando usarlo. Un agente remoto si comporta in modo diverso: riceve una richiesta in linguaggio naturale, decide da solo come soddisfarla, può chiedere chiarimenti o rifiutare il compito e porta avanti con il client un'interazione su più turni. Trattarlo come uno strumento vorrebbe dire ridurlo a una funzione e perdere proprio queste caratteristiche.\footnote{La revisione di novembre 2025 della specifica MCP ha introdotto, in forma sperimentale, i \emph{Tasks}, che permettono di eseguire in modo asincrono operazioni di lunga durata \cite{mcp2025spec}. In questo modo MCP si avvicina ad A2A nella gestione dei compiti lunghi, ma il modello di fondo resta quello del rapporto tra un client e uno strumento.}
+Quando A2A è stato proposto, esisteva già uno standard per collegare gli agenti AI a strumenti e sistemi esterni, il Model Context Protocol (MCP), 
+introdotto da Anthropic nel novembre 2024 \cite{anthropic2024mcp}. MCP definisce un'interfaccia uniforme basata su JSON-RPC, con cui un'applicazione basata 
+su LLM accede agli strumenti, ai dati e ai prompt messi a disposizione da un server.
+Per far comunicare gli agenti, si potrebbe pensare di esporre l'agente dell'agenzia come un server MCP con uno strumento \texttt{prenota\_\allowbreak viaggio}. 
+MCP, però, è stato progettato per definire il rapporto tra un agente e i suoi strumenti. Uno strumento, infatti, ha un'interfaccia fissa, descritta da un nome 
+e da uno schema dei parametri, riceve una chiamata e restituisce un risultato, ed è il client a decidere come e quando usarlo. Un agente remoto, invece, 
+riceve una richiesta in linguaggio naturale, decide da solo come soddisfarla, può chiedere chiarimenti o rifiutare il compito e porta avanti con il client
+ un'interazione duratura. Trattarlo come se fosse uno strumento significherebbe ridurlo a una funzione e perdere proprio queste caratteristiche.
+\footnote{La revisione di novembre 2025 della specifica MCP ha introdotto, in forma sperimentale, 
+   i \emph{Tasks}, che permettono di eseguire in modo asincrono operazioni di lunga durata \cite{mcp2025spec}. In questo modo MCP si avvicina ad A2A nella gestione dei compiti lunghi, ma il modello di fondo resta quello del rapporto tra un client e uno strumento.}
 
-I due protocolli lavorano quindi a livelli diversi e possono essere usati insieme, come mostra la Figura~\ref{fig:a2a-mcp}. Ciascun agente usa MCP per accedere ai propri strumenti e A2A per comunicare con gli altri agenti. Nell'esempio, l'agente aziendale consulta il calendario tramite MCP e delega la prenotazione all'agente dell'agenzia tramite A2A; quest'ultimo, a sua volta, usa MCP per interrogare i sistemi delle compagnie aeree e degli alberghi, senza che l'agente aziendale ne sappia nulla.
+Quindi, i due protocolli lavorano a livelli diversi e possono essere usati insieme. Come mostra la Figura~\ref{fig:a2a-mcp}, ciascun agente usa MCP per accedere ai propri
+ strumenti mentre utilizzzano A2A per comunicare con gli altri agenti. Nell'esempio, l'agente aziendale consulta il calendario tramite MCP e delega la prenotazione 
+ all'agente dell'agenzia tramite A2A. Quest'ultimo, a sua volta, usa MCP per interrogare i sistemi delle compagnie aeree e degli alberghi, senza che l'agente aziendale ne sappia nulla.
 
 \begin{figure}[htbp]
     \centering
@@ -58,8 +81,8 @@ I due protocolli lavorano quindi a livelli diversi e possono essere usati insiem
         % Confini delle organizzazioni
         \draw[dashed, rounded corners, gray] (-2.5,-3.4) rectangle (2.5,1.1);
         \draw[dashed, rounded corners, gray] (4.7,-3.4) rectangle (9.7,1.1);
-        \node[font=\footnotesize\itshape, gray!70!black, anchor=north west] at (-2.45,1.05) {Azienda};
-        \node[font=\footnotesize\itshape, gray!70!black, anchor=north west] at (4.75,1.05) {Agenzia viaggi};
+        \node[font=\footnotesize\itshape, gray!70!black, anchor=north west] at (-2.45,1.15) {Azienda};
+        \node[font=\footnotesize\itshape, gray!70!black, anchor=north west] at (4.75,1.15) {Agenzia viaggi};
     \end{tikzpicture}
     \caption{Ruoli di A2A e MCP nello scenario d'esempio. Ogni agente accede ai propri strumenti tramite MCP, mentre i due agenti, che appartengono a organizzazioni diverse, comunicano tra loro tramite A2A senza conoscere gli strumenti l'uno dell'altro.}
     \label{fig:a2a-mcp}
@@ -67,16 +90,20 @@ I due protocolli lavorano quindi a livelli diversi e possono essere usati insiem
 
 \subsection{La nascita di A2A e i suoi principi}
 
-A2A è stato presentato da Google nell'aprile 2025, con il supporto di oltre cinquanta aziende partner \cite{google2025a2a}. Nel giugno dello stesso anno Google ha donato il progetto alla Linux Foundation, che da allora ne gestisce lo sviluppo come progetto open source con una governance neutrale; tra i membri fondatori, oltre a Google, ci sono AWS, Cisco, Microsoft, Salesforce, SAP e ServiceNow \cite{linuxfoundation2025a2a}. Dopo alcune versioni preliminari, nel marzo 2026 è stata pubblicata la versione 1.0 della specifica, la prima considerata stabile \cite{a2aspec}. Nel resto della tesi si fa riferimento a questa versione.
+A2A è stato presentato da Google nell'aprile 2025, con il supporto di oltre cinquanta aziende partner \cite{google2025a2a}. Nel giugno dello 
+stesso anno Google ha donato il progetto alla Linux Foundation, che da allora ne gestisce lo sviluppo come progetto open source con una governance neutrale;
+ tra i membri fondatori, oltre a Google, ci sono AWS, Cisco, Microsoft, Salesforce, SAP e ServiceNow \cite{linuxfoundation2025a2a}. Dopo alcune versioni preliminari,
+  nel marzo 2026 è stata pubblicata la versione 1.0 della specifica, la prima considerata stabile \cite{a2aspec}. Nel resto della tesi si fa riferimento a questa versione.
+
 
 La specifica dichiara cinque principi di progettazione \cite{a2aspec}, che corrispondono in buona parte ai requisiti visti in precedenza.
 
 \begin{itemize}
     \item \textbf{Semplicità.} A2A non introduce nuove tecnologie, ma riusa standard già diffusi come HTTP, JSON-RPC 2.0 e Server-Sent Events. Così un agente può adottarlo con gli strumenti che già usa, indipendentemente dal framework con cui è sviluppato.
-    \item \textbf{Prontezza per l'uso aziendale.} Autenticazione, autorizzazione e monitoraggio si basano su meccanismi standard del web, come OAuth 2.0, e rispondono al requisito di sicurezza.
-    \item \textbf{Asincronia.} Il protocollo è pensato fin dall'inizio per compiti anche molto lunghi e per interazioni in cui serve l'intervento di un utente umano.
-    \item \textbf{Indipendenza dalla modalità.} Gli agenti possono scambiarsi testo, file e dati strutturati, e non solo messaggi testuali.
-    \item \textbf{Esecuzione opaca.} Gli agenti collaborano senza condividere il proprio stato interno, la memoria o gli strumenti. È il requisito di opacità, ed è la principale differenza rispetto al modello di MCP.
+    \item \textbf{Adeguatezza all'ambito aziendale.} Autenticazione, autorizzazione e monitoraggio si basano su meccanismi standard del web, come OAuth 2.0, e rispondono al requisito di sicurezza.
+    \item \textbf{Supporto ai compiti asincroni.} Il protocollo è pensato fin dall'inizio per compiti anche molto lunghi e per interazioni in cui serve l'intervento di un utente umano.
+    \item \textbf{Formati di contenuto diversi.} Gli agenti possono scambiarsi non solo testo, ma anche file e dati strutturati.
+    \item \textbf{Riservatezza dell'implementazione.} Gli agenti collaborano senza condividere il proprio stato interno, la memoria o gli strumenti. Questa scelta risponde al requisito di riservatezza dell'implementazione ed è la principale differenza rispetto al modello di MCP.
 \end{itemize}
 
 Il requisito di scoperta non compare tra i principi, ma è uno degli obiettivi dichiarati del protocollo ed è affidato all'Agent Card, un documento con cui ogni agente descrive le proprie capacità. L'Agent Card è il primo degli oggetti del protocollo descritti nella Sezione~\ref{sec:a2a-architettura}, insieme a Message, Task e Artifact.
@@ -102,7 +129,7 @@ I ruoli di client e server dipendono dalla singola interazione e non dall'agente
 
 \subsection{L'Agent Card}
 
-Prima di affidare un compito a un agente remoto, il client deve sapere che cosa sa fare, dove contattarlo e come autenticarsi. Queste informazioni sono contenute nell'\emph{Agent Card}, un documento JSON che ogni server A2A pubblica per descrivere sé stesso. La specifica prevede tre modi per ottenerla \cite{a2aspec}:
+Prima di affidare un compito a un agente remoto, il client deve conoscerne le capacità, l'indirizzo a cui contattarlo e le modalità di autenticazione. Queste informazioni sono contenute nell'\emph{Agent Card}, un documento JSON che ogni server A2A pubblica per descrivere sé stesso. La specifica prevede tre modi per ottenerla \cite{a2aspec}:
 
 \begin{itemize}
     \item da un indirizzo standard sul dominio dell'agente, stabilito secondo la convenzione degli URI \emph{well-known} della RFC~8615: \texttt{/.well-known/\allowbreak agent-card.json};
@@ -121,7 +148,7 @@ La Figura~\ref{fig:agent-card} mostra una possibile Agent Card per l'agente dell
     \item \texttt{skills} è l'elenco delle \emph{skill}, cioè delle capacità dell'agente. Ogni skill ha un identificativo, un nome, una descrizione, delle parole chiave (\texttt{tags}) ed eventualmente degli esempi di richieste.
 \end{itemize}
 
-\begin{figure}[htbp]
+\begin{figure}[!ht]
 \centering
 \begin{minipage}{0.95\linewidth}
 \footnotesize
@@ -161,17 +188,25 @@ La Figura~\ref{fig:agent-card} mostra una possibile Agent Card per l'agente dell
 }
 \end{verbatim}
 \end{minipage}
-\caption{Esempio di Agent Card per l'agente dell'agenzia viaggi, nel formato della versione 1.0 della specifica. L'agente è raggiungibile tramite JSON-RPC, supporta lo streaming e richiede un token OAuth~2.0 ottenuto con il flusso \emph{client credentials}.}
+\caption{Esempio di Agent Card per l'agente dell'agenzia viaggi, nel formato della versione 1.0 della specifica. L'agente è raggiungibile tramite JSON-RPC, 
+supporta lo streaming e richiede un token OAuth~2.0 ottenuto con il flusso \emph{client credentials}.}
 \label{fig:agent-card}
 \end{figure}
 
-Le skill sono soprattutto descrittive: non definiscono un'interfaccia rigida come lo schema dei parametri di uno strumento MCP, ma dicono in linguaggio naturale per quali richieste l'agente è adatto. Quando il client è a sua volta un agente basato su LLM, è il modello a leggere le descrizioni delle skill e a decidere se e a chi delegare un compito, in modo simile a come sceglie quale strumento chiamare (Sezione~\ref{sec:toolformer}).
+Le skill sono soprattutto descrittive: non definiscono un'interfaccia rigida come lo schema dei parametri di uno strumento MCP, ma dicono in linguaggio naturale
+per quali richieste l'agente è adatto. Quando il client è a sua volta un agente basato su LLM, è il modello a leggere le descrizioni delle skill e a decidere se 
+e a chi delegare un compito, in modo simile a come sceglie quale strumento chiamare (Sezione~\ref{sec:toolformer}).
 
-L'Agent Card pubblica è leggibile da chiunque, per cui un agente può non voler mostrare tutte le proprie capacità. Per questo la specifica prevede anche una \emph{Agent Card estesa}, più dettagliata, che il client può richiedere solo dopo essersi autenticato. La card può inoltre essere firmata digitalmente (campo \texttt{signatures}), così che il client possa verificare che provenga davvero dall'organizzazione indicata.
+L'Agent Card pubblica è leggibile da chiunque, per cui un agente può non voler mostrare tutte le proprie capacità. Per questo la specifica prevede anche
+ una \emph{Agent Card estesa}, più dettagliata, che il client può richiedere solo dopo essersi autenticato. La card può inoltre essere firmata digitalmente 
+ (campo \texttt{signatures}), così che il client possa verificare che provenga davvero dall'organizzazione indicata.
+
+\FloatBarrier
 
 \subsection{Message e Part}
 
-L'unità di comunicazione tra client e server è il \emph{Message}, che rappresenta un singolo turno della conversazione. I suoi campi principali sono:
+L'unità di comunicazione tra client e server prende il nome di \emph{Message} e corrisponde a un singolo scambio della conversazione, inviato dal client o 
+dall'agente remoto. I suoi campi principali sono:
 
 \begin{itemize}
     \item \texttt{messageId}, un identificativo univoco generato da chi crea il messaggio;
@@ -181,7 +216,11 @@ L'unità di comunicazione tra client e server è il \emph{Message}, che rapprese
     \item \texttt{reference\allowbreak Task\allowbreak Ids}, facoltativo, con cui il client può citare altri Task come contesto aggiuntivo.
 \end{itemize}
 
-Il contenuto vero e proprio è diviso in \emph{Part}. Ogni Part contiene esattamente uno dei seguenti tipi di dato: testo (\texttt{text}), il contenuto binario di un file codificato in base64 (\texttt{raw}), un riferimento a un file tramite URL (\texttt{url}) oppure dati strutturati in formato JSON (\texttt{data}). A questo si possono aggiungere il tipo MIME del contenuto (\texttt{mediaType}), un nome di file e dei metadati. Grazie alle Part un singolo messaggio può contenere, ad esempio, una richiesta in linguaggio naturale insieme a un oggetto JSON con le date del viaggio, ed è in questo modo che il protocollo realizza il principio di indipendenza dalla modalità.
+Il contenuto vero e proprio è diviso in \emph{Part}. Ogni Part contiene esattamente uno dei seguenti tipi di dato: testo (\texttt{text}), il contenuto binario
+di un file codificato in base64 (\texttt{raw}), un riferimento a un file tramite URL (\texttt{url}) oppure dati strutturati in formato JSON (\texttt{data}). A 
+questo si possono aggiungere il tipo MIME del contenuto (\texttt{mediaType}), un nome di file e dei metadati. Grazie alle Part un singolo messaggio può contenere, 
+ad esempio, una richiesta in linguaggio naturale insieme a un oggetto JSON con le date del viaggio, ed è in questo modo che il protocollo realizza il principio di
+ indipendenza dalla modalità.
 
 Un messaggio con cui l'agente aziendale avvia la prenotazione potrebbe essere il seguente:
 
@@ -208,20 +247,27 @@ Un messaggio con cui l'agente aziendale avvia la prenotazione potrebbe essere il
 Quando riceve un messaggio, il server può rispondere in due modi. Per le interazioni semplici, che si esauriscono in una sola risposta, può restituire direttamente un altro Message. Quando invece la richiesta richiede un lavoro da seguire nel tempo, crea un \emph{Task}, l'unità di lavoro fondamentale del protocollo. Il Task ha i seguenti campi:
 
 \begin{itemize}
-    \item \texttt{id}, l'identificativo del Task, generato sempre dal server: il client non può scegliere l'identificativo di un nuovo Task;
+    \item \texttt{id}, l'identificativo del Task, generato sempre dal server;
     \item \texttt{contextId}, il contesto a cui il Task appartiene;
-    \item \texttt{status}, lo stato corrente, composto da uno stato (\texttt{state}), da un messaggio facoltativo che lo accompagna e da un timestamp;
+    \item \texttt{status}, che indica a che punto è il compito e contiene lo stato (\texttt{state}), un messaggio facoltativo di accompagnamento e un \emph{timestamp}
+                             (la data e l'ora, in formato standard, a cui lo stato si riferisce);
     \item \texttt{artifacts}, i risultati prodotti;
     \item \texttt{history}, la cronologia dei messaggi scambiati durante l'esecuzione.
 \end{itemize}
 
-I risultati di un Task sono restituiti come \emph{Artifact}. Un Artifact ha un proprio identificativo (\texttt{artifactId}), un nome, una descrizione facoltativa e, come il Message, una lista di Part. Nell'esempio, l'Artifact finale potrebbe contenere il riepilogo della prenotazione sia come testo sia come dati strutturati, con i codici del volo e dell'albergo. La specifica distingue in modo netto i due oggetti: i Message servono a comunicare (avviare un compito, chiedere chiarimenti, dare aggiornamenti sull'avanzamento), mentre gli Artifact contengono l'output del lavoro, e i risultati non dovrebbero essere restituiti dentro i messaggi \cite{a2aspec}.
+I risultati di un Task sono restituiti come \emph{Artifact}. Un Artifact ha un proprio identificativo (\texttt{artifactId}), un nome, 
+una descrizione facoltativa e, come il Message, una lista di Part. Nell'esempio precedente, l'Artifact finale potrebbe contenere il riepilogo della prenotazione sia come testo sia come dati strutturati, con i codici del volo e dell'albergo. La specifica distingue in modo netto i due oggetti: i Message servono a comunicare (avviare un compito, chiedere chiarimenti, dare aggiornamenti sull'avanzamento), mentre gli Artifact contengono l'output del lavoro, e i risultati non dovrebbero essere restituiti dentro i messaggi \cite{a2aspec}.
 
-Il \texttt{contextId} raggruppa Task e Message che fanno parte della stessa conversazione. Se il primo messaggio del client non ne contiene uno, il server può generarlo e lo restituisce nella risposta; il client lo usa poi nei messaggi successivi per indicare che appartengono alla stessa sessione. Il server può usare il contesto per mantenere lo stato della conversazione, ad esempio la memoria dell'LLM, tra un Task e l'altro. Il rapporto tra i due identificativi è quindi il seguente: il \texttt{taskId} identifica un singolo lavoro, mentre il \texttt{contextId} identifica la conversazione in cui quel lavoro si inserisce e che può contenere più Task.
+Il \texttt{contextId} raggruppa Task e Message che fanno parte della stessa conversazione. Se il primo messaggio del client non ne contiene uno, 
+il server può generarlo e lo restituisce nella risposta; il client lo usa poi nei messaggi successivi per indicare che appartengono alla stessa sessione. 
+Il server può usare il contesto per mantenere lo stato della conversazione, ad esempio la memoria dell'LLM, tra un Task e l'altro. Il rapporto tra i due 
+identificativi è quindi il seguente: il \texttt{taskId} identifica un singolo lavoro, mentre il \texttt{contextId} identifica la conversazione in cui quel 
+lavoro si inserisce e che può contenere più Task.
 
 \subsection{Le operazioni}
 
-Il livello delle operazioni astratte definisce che cosa il client può chiedere al server. La Tabella~\ref{tab:operazioni-a2a} riporta le operazioni della versione 1.0 con il nome usato nel binding JSON-RPC.
+Le operazioni astratte elencano ciò che il client può chiedere al server. Nella Tabella~\ref{tab:operazioni-a2a} sono indicate quelle previste dalla versione 1.0, 
+ciascuna con il nome che assume nel binding JSON-RPC.
 
 \begin{table}[htbp]
     \centering
@@ -244,19 +290,11 @@ Il livello delle operazioni astratte definisce che cosa il client può chiedere 
     \label{tab:operazioni-a2a}
 \end{table}
 
-L'operazione principale è \texttt{SendMessage}. Per impostazione predefinita è bloccante: il server risponde solo quando il Task ha raggiunto uno stato terminale oppure si è fermato in attesa di qualcosa dal client. Il client può però chiedere una risposta immediata con il parametro \texttt{return\allowbreak Immediately}; in questo caso riceve subito il Task appena creato, mentre l'elaborazione continua in background.
+La richiesta più importante è \texttt{SendMessage}. In genere il client resta in attesa della risposta, che arriva solo quando il Task si conclude o quando il server ha bisogno di un suo intervento. Il client può però chiedere una risposta immediata con il parametro \texttt{return\allowbreak Immediately}; in questo caso riceve subito il Task appena creato, mentre l'elaborazione continua in background.
 
-Per seguire un Task che prosegue nel tempo il protocollo offre tre meccanismi:
+Per seguire un Task che prosegue nel tempo il protocollo offre tre meccanismi. Il più semplice è il \emph{polling}, in cui il client chiama periodicamente \texttt{GetTask}, ma introduce ritardi e richieste inutili. Le \emph{notifiche push} consentono al server di inviare gli aggiornamenti a un indirizzo (\emph{webhook}) registrato dal client, e sono adatte ai compiti molto lunghi. Questa tesi si concentra sul terzo meccanismo, lo \emph{streaming}, in cui il server invia gli eventi man mano che si verificano, tramite \texttt{Send\allowbreak Streaming\allowbreak Message} o \texttt{Subscribe\allowbreak To\allowbreak Task}. Nei binding basati su HTTP gli eventi viaggiano come Server-Sent Events e sono di due tipi: \texttt{Task\allowbreak Status\allowbreak Update\allowbreak Event}, per i cambi di stato, e \texttt{Task\allowbreak Artifact\allowbreak Update\allowbreak Event}, per gli Artifact nuovi o aggiornati, che possono anche essere inviati a pezzi.
 
-\begin{itemize}
-    \item il \emph{polling}, in cui il client chiama periodicamente \texttt{GetTask}. È il più semplice, ma introduce ritardi e richieste inutili;
-    \item lo \emph{streaming}, in cui il server invia gli eventi mentre si verificano, tramite \texttt{Send\allowbreak Streaming\allowbreak Message} o \texttt{Subscribe\allowbreak To\allowbreak Task}. Nei binding basati su HTTP gli eventi viaggiano come Server-Sent Events e sono di due tipi: \texttt{Task\allowbreak Status\allowbreak Update\allowbreak Event}, per i cambi di stato, e \texttt{Task\allowbreak Artifact\allowbreak Update\allowbreak Event}, per gli Artifact nuovi o aggiornati, che possono anche essere inviati a pezzi;
-    \item le \emph{notifiche push}, in cui il server invia gli aggiornamenti con una richiesta HTTP POST a un indirizzo (\emph{webhook}) registrato dal client. Sono adatte ai compiti molto lunghi, perché il client non deve tenere aperta una connessione.
-\end{itemize}
-
-Lo streaming e le notifiche push sono funzionalità opzionali, che il server deve dichiarare nel campo \texttt{capabilities} dell'Agent Card.
-
-\subsection{Il ciclo di vita del Task}
+Lo streaming e le notifiche push sono funzionalità opzionali, che il server deve dichiarare nel campo \texttt{capabilities} dell'Agent Card.\subsection{Il ciclo di vita del Task}
 
 Ogni Task attraversa una serie di stati, registrati nel campo \texttt{status}. La versione 1.0 ne definisce nove, riportati nella Tabella~\ref{tab:stati-task}. Nella serializzazione JSON gli stati compaiono con il prefisso \texttt{TASK\_STATE\_} (ad esempio \texttt{TASK\_\allowbreak STATE\_\allowbreak INPUT\_\allowbreak REQUIRED}); nel testo si usa per brevità il nome senza prefisso.
 
@@ -267,7 +305,7 @@ Ogni Task attraversa una serie di stati, registrati nel campo \texttt{status}. L
         \hline
         \textbf{Stato} & \textbf{Tipo} & \textbf{Significato} \\
         \hline
-        \texttt{UNSPECIFIED} & -- & Valore predefinito, indica uno stato sconosciuto. \\
+        \texttt{UNSPECIFIED} & -- -- -- & Valore predefinito, indica uno stato sconosciuto. \\
         \texttt{SUBMITTED} & attivo & Il Task è stato ricevuto e accettato, ma l'elaborazione non è ancora iniziata. \\
         \texttt{WORKING} & attivo & L'agente sta elaborando il Task. \\
         \texttt{INPUT\_\allowbreak REQUIRED} & interrotto & L'agente ha bisogno di altre informazioni dal client per proseguire. \\
@@ -445,7 +483,7 @@ Entrambi i metodi sono asincroni, cioè coroutine eseguite dal ciclo di eventi d
 
         % Eventi
         \draw[freccia] (executor) -- node[etichetta, below] {pubblica eventi} (queue);
-        \draw[freccia] (queue.north west) -- node[etichetta, below right=-1pt, pos=0.45] {eventi} (handler.south east);
+        \draw[freccia] (queue.north west) -- node[etichetta, sloped, above, pos=0.5] {eventi} (handler.south east);
         \draw[freccia] (handler) -- node[etichetta, above] {aggiorna il Task} (store);
 
         % Risposta
@@ -453,7 +491,7 @@ Entrambi i metodi sono asincroni, cioè coroutine eseguite dal ciclo di eventi d
 
         % Confine del server
         \draw[dashed, rounded corners, gray] (-3.0,-1.4) rectangle (8.0,-6.6);
-        \node[font=\footnotesize\itshape, gray!70!black, anchor=south east] at (7.95,-6.55) {Server A2A};
+        \node[font=\footnotesize\itshape, gray!70!black, anchor=south east] at (8,-7.25) {Server A2A};
     \end{tikzpicture}
     \caption{Il percorso di una richiesta in un server costruito con l'SDK Python di A2A. L'unico componente scritto dallo sviluppatore è l'\texttt{AgentExecutor} (evidenziato), che pubblica eventi sulla coda; è il gestore delle richieste a trasformarli in aggiornamenti del Task memorizzato e in risposte per il client.}
     \label{fig:flusso-executor}
