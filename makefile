@@ -11,8 +11,7 @@ included_latex_sources = \
 	capitoli/capitolo2_protocollo-a2a.tex \
 	capitoli/capitolo3_requisiti-sistema.tex \
 	capitoli/capitolo4_progettazione.tex \
-	capitoli/capitolo5_implementazione.tex \
-	capitoli/capitolo6_validazione-testing.tex \
+	capitoli/capitolo5_validazione-testing.tex \
 	conclusioni.tex
 
 # lista qui le figure che ti servono 

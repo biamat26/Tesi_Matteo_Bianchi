@@ -10,9 +10,9 @@
 
 \dedica{Questa è la dedica}
 
-\usepackage[plainpages=false]{hyperref}
+\usepackage[plainpages=false,hypertexnames=false]{hyperref}
 \usepackage[all]{hypcap}
-\usepackage{xurl} % consente di andare a capo in qualsiasi punto degli URL
+\usepackage{xurl} 
 \usepackage{amsthm}
 \usepackage{amsmath}
 \usepackage{tikz}
@@ -24,10 +24,8 @@
 \algdef{C}[TRY]{TRY}{Catch}[1]{ \textbf{catch} #1}
 \algdef{C}[TRY]{TRY}{Finally}{\textbf{finally}}
 
-% consente di andare a capo dopo "_" negli identificatori (es. TASK_STATE_...)
 \let\underscoreoriginale\_
 \renewcommand{\_}{\underscoreoriginale\allowbreak}
-% evita righe che sporgono dal margine con identificatori lunghi in \texttt
 \setlength{\emergencystretch}{3em}
 
 
@@ -44,9 +42,8 @@
 \capitolo{Il protocollo Agent2Agent}{capitoli/capitolo2_protocollo-a2a}
 \capitolo{Requisiti del Sistema}{capitoli/capitolo3_requisiti-sistema}
 \capitolo{Progettazione}{capitoli/capitolo4_progettazione}
-\capitolo{Implementazione}{capitoli/capitolo5_implementazione}
 
-\capitolo{Validazione e Testing}{capitoli/capitolo6_validazione-testing}
+\capitolo{Validazione e Testing}{capitoli/capitolo5_validazione-testing}
 
 
 

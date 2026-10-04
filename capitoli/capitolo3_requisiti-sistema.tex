@@ -9,7 +9,7 @@ Il tirocinio si è svolto presso HCL Software, in un contesto in cui gli utenti 
 
 L'obiettivo principale del tirocinio era realizzare una gestione della funzionalità di cancellazione (\texttt{cancel}) di un Task applicabile a qualsiasi agente realizzato dagli utenti. Data la stretta relazione tra la gestione della cancellazione e quella dell'esecuzione di un Task -- entrambe implementate come metodi della medesima classe Python \texttt{AgentExecutor} -- tale obiettivo ha richiesto necessariamente anche uno studio approfondito e una revisione della funzionalità di esecuzione (\texttt{execute}) già esistente.
 
-Durante il tirocinio si è reso inoltre necessario aggiornare il codice aziendale, ancora basato sulla versione 0.3 del protocollo A2A, alla versione 1.0. Il passaggio ha permesso di adottare la serie 1.1 dell'SDK Python ufficiale e open source (\texttt{a2a-sdk}) \cite{a2apythonchangelog}: a essa fanno riferimento l'implementazione e le verifiche descritte in questa tesi, condotte con la versione 1.1.5. L'aggiornamento ha introdotto diverse modifiche non retrocompatibili rispetto alla versione 0.3. Tra le più rilevanti per il lavoro svolto figurano la ridefinizione dei nomi dei metodi invocati nelle richieste JSON-RPC, allineati alla convenzione di denominazione di gRPC (ad esempio, \texttt{message/send} è diventato \texttt{SendMessage} e \texttt{tasks/cancel} è diventato \texttt{CancelTask}), l'unificazione delle tipologie di contenuto (\texttt{TextPart}, \texttt{FilePart}, \texttt{DataPart}) in un'unica struttura \texttt{Part} e una revisione della struttura dell'Agent Card \cite{a2awhatsnew}. Per non interrompere la compatibilità con i client esistenti, l'SDK consente di esporre l'endpoint JSON-RPC accettando anche i nomi dei metodi della versione 0.3 \cite{a2apythonsdk}; questa modalità è stata abilitata nel server.
+Durante il tirocinio è stato inoltre necessario aggiornare il codice aziendale dalla versione 0.3 alla versione 1.0 del protocollo A2A. Per supportare la nuova versione del protocollo è stata adottata la serie 1.1 dell'SDK Python ufficiale e open source (\texttt{a2a-sdk}) \cite{a2apythonchangelog}; il lavoro descritto in questa tesi si basa in particolare sulla versione 1.1.5 dell'SDK. Rispetto alla versione 0.3, la versione 1.0 del protocollo introduce diverse modifiche non retrocompatibili. Tra le più rilevanti per il lavoro svolto figurano la ridefinizione dei nomi dei metodi invocati nelle richieste JSON-RPC, allineati alla convenzione di denominazione di gRPC (ad esempio, \texttt{message/send} è diventato \texttt{SendMessage} e \texttt{tasks/cancel} è diventato \texttt{CancelTask}), l'unificazione delle tipologie di contenuto (\texttt{TextPart}, \texttt{FilePart}, \texttt{DataPart}) in un'unica struttura \texttt{Part} e una revisione della struttura dell'Agent Card \cite{a2awhatsnew}. Per non interrompere la compatibilità con i client esistenti, l'SDK consente di esporre l'endpoint JSON-RPC accettando anche i nomi dei metodi della versione 0.3 \cite{a2apythonsdk}; questa modalità è stata abilitata nel server.
 
 In sintesi, il sistema doveva essere in grado di gestire correttamente la cancellazione di un Task in entrambe le modalità di invocazione previste dal protocollo, sincrona (\texttt{SendMessage}) e in streaming (\texttt{SendStreamingMessage}), garantendo in entrambi i casi un comportamento coerente e uno stato finale del Task univocamente determinato.
 
@@ -55,24 +55,20 @@ Per consentirne il riferimento puntuale nei capitoli successivi, a ciascun requi
 
     \item[RF4] Una richiesta di cancellazione relativa a un Task non ancora giunto in uno stato terminale, ma attualmente non in esecuzione (tipicamente un Task in \texttt{INPUT\_REQUIRED}, in attesa di un nuovo messaggio dell'utente), deve portare il Task direttamente nello stato \texttt{CANCELED}.
 
-    \item[RF5] Una richiesta di cancellazione relativa a un Task che ha già raggiunto uno stato terminale (\texttt{COMPLETED}, \texttt{FAILED}, \texttt{CANCELED}, \texttt{REJECTED}) deve essere rifiutata con un errore esplicito (\texttt{TaskNotCancelableError}), anziché essere ignorata silenziosamente \cite{a2aspec}.
+    \item[RF5] Una richiesta di cancellazione o di invio di un nuovo messaggio riferita a un Task inesistente deve essere rifiutata con un errore specifico (\texttt{TaskNotFoundError}) \cite{a2aspec}.
 
-    \item[RF6] Una richiesta di cancellazione o di invio di un nuovo messaggio riferita a un Task inesistente deve essere rifiutata con un errore specifico (\texttt{TaskNotFoundError}) \cite{a2aspec}.
+    \item[RF6] Più richieste di cancellazione relative allo stesso Task non devono alterarne lo stato oltre la prima: il Task resta in \texttt{CANCELED}.
 
-    \item[RF7] Un Task giunto in uno stato terminale non deve accettare ulteriori messaggi: l'invio di un nuovo messaggio verso un Task in questo stato deve essere rifiutato con un errore specifico (\texttt{UnsupportedOperationError}) \cite{a2aspec}.
-
-    \item[RF8] Più richieste di cancellazione relative allo stesso Task non devono alterarne lo stato oltre la prima: il Task resta in \texttt{CANCELED}, e le richieste successive vengono rifiutate secondo quanto previsto da RF5.
-
-    \item[RF9] Il sistema deve gestire l'esecuzione concorrente di più Task, mantenendo per ciascuno una gestione indipendente del proprio stato e del proprio ciclo di vita.
-
-    \item[RF10] Una richiesta di cancellazione che raggiunge un Task in esecuzione quando l'elaborazione ha già prodotto un esito non deve impedirne la consegna al client. Se l'esito è terminale, la richiesta non deve sovrascriverlo e lo stato finale notificato al client deve coincidere con quello memorizzato dal sistema; se l'esito è invece una richiesta di ulteriori input, il Task deve rimanere cancellabile secondo quanto previsto da RF4.
+    \item[RF7] Il sistema deve gestire l'esecuzione concorrente di più Task, mantenendo per ciascuno una gestione indipendente del proprio stato e del proprio ciclo di vita.
 \end{description}
+
+Il comportamento previsto dalla specifica per le operazioni su Task già terminati, cioè il rifiuto di una richiesta di cancellazione con \texttt{TaskNotCancelableError} e di un nuovo messaggio con \texttt{UnsupportedOperationError} \cite{a2aspec}, dipende dal gestore delle richieste dell'SDK e non dall'\texttt{AgentExecutor}. Per questo non è stato formalizzato tra i requisiti, ed è discusso tra i limiti della soluzione nella Sezione~\ref{sec:limiti}.
 
 \subsection{Requisiti non funzionali}
 
 \begin{description}
     \item[RNF1 -- Genericità] La gestione del ciclo di vita dei Task deve poter essere applicata, con modifiche minime, a qualsiasi agente personalizzato realizzato dagli utenti dell'azienda, prescindendo dalla specifica logica applicativa del singolo agente.
-    \item[RNF2 -- Testabilità] La logica di \texttt{execute} e \texttt{cancel} deve poter essere verificata in modo automatico, tramite test che esercitino il gestore delle richieste dell'SDK, e in modo manuale, tramite chiamate HTTP dirette verso l'endpoint esposto dal server.
+    \item[RNF2 -- Testabilità] Il comportamento di \texttt{execute} e \texttt{cancel} deve poter essere verificato tramite chiamate HTTP dirette verso l'endpoint esposto dal server, sia in modalità sincrona sia in streaming, utilizzando strumenti standard come curl e Postman.
 \end{description}
 
 Non sono stati formalizzati requisiti relativi ad altre proprietà non funzionali tradizionali, quali sicurezza, robustezza a input malformati o osservabilità, in quanto estranee al perimetro del tirocinio, incentrato sulla correttezza del ciclo di vita dei Task.
