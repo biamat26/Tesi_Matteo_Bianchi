@@ -1,1 +1,247 @@
 \label{cap:validazione}
+
+Questo capitolo descrive come è stato verificato che la gestione del ciclo di vita dei Task progettata nel Capitolo~\ref{cap:progettazione} soddisfi i requisiti del Capitolo~\ref{cap:requisiti}. Come previsto dal requisito RNF2, la verifica è stata condotta tramite chiamate HTTP dirette all'endpoint esposto dal server. La Sezione~\ref{sec:ambiente-test} presenta l'ambiente di test. La Sezione~\ref{sec:difficolta-task-id} discute la principale difficoltà incontrata nel verificare a mano la cancellazione, e la Sezione~\ref{sec:durata-controllata} il modo in cui è stata superata. La Sezione~\ref{sec:scenari} riporta gli scenari di test e i risultati, riassunti nella Sezione~\ref{sec:riepilogo-test}. La Sezione~\ref{sec:limiti-validazione} chiude il capitolo con i limiti della validazione svolta.
+
+\section{Ambiente di test}
+\label{sec:ambiente-test}
+
+I test sono stati svolti sul progetto indipendente descritto nel Capitolo~\ref{cap:requisiti}. Il server espone un unico endpoint JSON-RPC, all'indirizzo \texttt{/a2a/jsonrpc}, e pubblica l'Agent Card all'indirizzo \emph{well-known}. Le richieste sono gestite dal \texttt{DefaultRequestHandler} della versione 1.1.5 dell'SDK, con la compatibilità con i nomi dei metodi della versione 0.3 abilitata, e i Task sono memorizzati in un \texttt{InMemoryTaskStore}. Il server si avvia con un solo comando, che indica quale agente esporre e su quale porta:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+\begin{verbatim}
+uv run server.py --agent countup --port 41241
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+Gli agenti di esempio sono due, entrambi costruiti con \texttt{create\_agent} di LangChain. Il primo, \emph{CountUp}, conta
+ in modo crescente da 1 fino al numero indicato dall'utente; il secondo, \emph{CountDown}, conta in modo decrescente da 100 fino al numero indicato.
+  Ognuno dispone di un solo \emph{tool} che esegue il conteggio ed è eseguito da un proprio executor, \texttt{CountUpExecutor} o \texttt{CountDownExecutor}.
+   Entrambi gli executor si limitano a estendere il \texttt{BaseExecutor} descritto nel Capitolo~\ref{cap:progettazione}, passandogli l'agente da eseguire, 
+   senza ridefinire \texttt{execute} né \texttt{cancel}. Il fatto che la stessa classe gestisca correttamente due agenti diversi costituisce già una prima verifica 
+   del requisito RNF1.
+
+Le richieste sono state inviate con curl e con Postman. Un messaggio in streaming ha la forma seguente:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+\begin{verbatim}
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "method": "SendStreamingMessage",
+  "params": {
+    "message": {
+      "messageId": "msg-001",
+      "role": "ROLE_USER",
+      "parts": [ { "text": "Conta fino a 30" } ]
+    }
+  }
+}
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+La richiesta di cancellazione indica soltanto l'identificativo del Task:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+\begin{verbatim}
+{
+  "jsonrpc": "2.0",
+  "id": "2",
+  "method": "CancelTask",
+  "params": { "id": "<task_id>" }
+}
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+Gli esempi usano i nomi dei metodi della versione 1.0 del protocollo. Poiché nel server è abilitata la compatibilità con la versione 0.3 (Capitolo~\ref{cap:requisiti}), durante i test sono stati usati anche i nomi equivalenti della versione precedente, come \texttt{message/\allowbreak stream} e \texttt{tasks/\allowbreak cancel}, verificando che il server accettasse entrambe le forme.
+
+\section{Una difficoltà del test manuale: il \texorpdfstring{\texttt{task\_id}}{task\_id}}
+\label{sec:difficolta-task-id}
+
+Per verificare la cancellazione occorre inviare una richiesta \texttt{CancelTask} mentre il Task è ancora in corso, e per farlo serve il suo identificativo. Come visto nella Sezione~\ref{sec:a2a-architettura}, però, l'identificativo di un nuovo Task è sempre generato dal server: il client non può sceglierlo in anticipo e deve leggerlo da una risposta. Il momento in cui questa risposta arriva dipende dalla modalità di invocazione.
+
+In streaming il primo evento inviato dal server contiene già il Task, e quindi il suo \texttt{task\_id}. Il valore va però copiato e usato in una seconda richiesta, inviata da un'altra finestra del terminale o di Postman, prima che il Task arrivi a conclusione.
+
+In modalità sincrona la situazione è peggiore. La risposta a \texttt{SendMessage} arriva solo quando il Task ha raggiunto uno stato terminale o interrotto, e a quel punto non c'è più nulla da cancellare. Durante il tirocinio, per verificare la cancellazione in questa modalità, il \texttt{task\_id} è stato recuperato eseguendo il server in modalità di debug e leggendolo prima che la risposta venisse inviata. Un'alternativa che non richiede di intervenire sul server è l'operazione \texttt{ListTasks}: mentre il client attende la risposta a \texttt{SendMessage}, una seconda richiesta può elencare i Task in corso e ricavarne l'identificativo.
+
+In entrambi i casi l'operazione richiede alcuni secondi. Un agente che risponde in poco tempo, come quelli usati normalmente, completa il Task prima che la richiesta di cancellazione possa essere inviata, e il test non può essere svolto.
+
+\section{Task di durata controllata}
+\label{sec:durata-controllata}
+
+Per avere il tempo di inviare la richiesta di cancellazione, gli agenti usati nei test sono stati costruiti in modo che la durata dei Task fosse controllabile. Nel progetto di test, lo strumento degli agenti CountUp e CountDown attende un secondo tra un numero e il successivo (Algoritmo~\ref{alg:conteggio}). Una richiesta come ``Conta fino a 30'' produce quindi un Task che dura circa trenta secondi, un tempo più che sufficiente per leggere il \texttt{task\_id} e inviare la cancellazione.
+
+\begin{algorithm}[htbp]
+\caption{\emph{Tool} di conteggio dell'agente CountUp}
+\label{alg:conteggio}
+\begin{algorithmic}[1]
+\Function{Conta}{$attesa$}
+    \If{$attesa < 1$}
+        \State \Return messaggio di errore
+    \EndIf
+    \For{$i = 1, \dots, attesa$}
+        \State \textbf{await} \Call{Attendi}{1 secondo} \Comment{punto di sospensione}
+        \State stampa $i$
+    \EndFor
+    \State \Return ``Conteggio fino a $attesa$ terminato''
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+L'attesa è realizzata con \texttt{asyncio.sleep}, e non con una funzione bloccante. La scelta è importante: ogni attesa è un punto di sospensione in cui, secondo il modello di cancellazione cooperativa descritto nel Capitolo~\ref{cap:progettazione}, può essere sollevata \texttt{CancelledError}. Il conteggio può quindi essere interrotto in qualsiasi momento, e dai log del server si vede esattamente a quale numero si è fermato. Il ritardo riguarda solo lo strumento dell'agente: la logica di \texttt{execute} e \texttt{cancel} resta quella descritta nel Capitolo~\ref{cap:progettazione}.
+
+In azienda è stato seguito lo stesso principio con un agente diverso, chiamato \emph{Loop Test Agent} (Figura~\ref{fig:loop-agent}). L'input dell'utente viene ricevuto da un primo agente fittizio, che lo inoltra all'Agente~1. L'Agente~1 legge un documento PDF e lo passa all'Agente~2, che a sua volta lo legge e lo restituisce all'Agente~1, e così via. Il ciclo prosegue fino a un massimo di 25 chiamate, oltre il quale viene sollevata un'eccezione. In questo modo il Task resta in esecuzione abbastanza a lungo da poter leggere il \texttt{task\_id} e inviare la richiesta di cancellazione.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        nodo/.style={draw, rounded corners, fill=blue!8, minimum width=2.4cm, minimum height=0.9cm, align=center, font=\small},
+        utente/.style={nodo, fill=white},
+        freccia/.style={-{Stealth[length=2.5mm]}, thick},
+        etichetta/.style={font=\footnotesize, align=center}
+    ]
+        \node[utente] (u)  at (0,0)    {Utente};
+        \node[nodo]   (d)  at (3.2,0)  {Agente\\fittizio};
+        \node[nodo]   (a1) at (6.6,0)  {Agente 1};
+        \node[nodo]   (a2) at (10.0,0) {Agente 2};
+
+        \draw[freccia] (u) -- (d);
+        \draw[freccia] (d) -- (a1);
+        \draw[freccia] (a1.north east) to[bend left=25] node[etichetta, above] {PDF} (a2.north west);
+        \draw[freccia] (a2.south west) to[bend left=25] node[etichetta, below] {PDF} (a1.south east);
+        \node[etichetta, gray!70!black] at (8.3,-1.5) {fino a 25 iterazioni};
+    \end{tikzpicture}
+    \caption{Struttura del Loop Test Agent usato in azienda. I due agenti si passano a vicenda il documento fino al limite di iterazioni, così che il Task resti in esecuzione abbastanza a lungo da poter essere cancellato.}
+    \label{fig:loop-agent}
+\end{figure}
+
+\section{Scenari di test e risultati}
+\label{sec:scenari}
+
+Gli scenari di test sono stati scelti in modo da coprire tutti i requisiti funzionali del Capitolo~\ref{cap:requisiti} e i tre scenari di cancellazione individuati nella Sezione~\ref{sec:cancel}. Per ciascuno si riportano la richiesta inviata, il comportamento atteso e quello osservato.
+
+\subsection{Esecuzione completa}
+
+Il primo scenario verifica l'esecuzione di un Task senza interruzioni, nelle due modalità di invocazione (RF1, RF2). All'agente CountUp viene chiesto di contare fino a un numero piccolo, prima con \texttt{SendMessage} e poi con \texttt{SendStreamingMessage}. Con \texttt{SendMessage} ci si aspetta un'unica risposta, che contiene il Task in \texttt{COMPLETED} e l'Artifact con il risultato. Con \texttt{SendStreamingMessage} ci si aspetta invece la sequenza di eventi \texttt{SUBMITTED}, \texttt{WORKING} (ripetuto a ogni passo del grafo), l'Artifact e infine \texttt{COMPLETED}.
+
+Il comportamento osservato coincide con quello atteso. Con \texttt{SendMessage} e la richiesta ``Conta fino a 3'', il client riceve dopo circa tre secondi un'unica risposta, che contiene il Task in \texttt{COMPLETED}, l'Artifact \texttt{result} con il testo prodotto dall'agente e, nella cronologia, il messaggio dell'utente seguito dai messaggi intermedi dell'agente. Con \texttt{SendStreamingMessage} e la stessa richiesta, il client riceve invece la sequenza di eventi seguente, in cui per brevità sono riportati solo il tipo di evento, lo stato e il testo associato:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+\begin{verbatim}
+task            SUBMITTED
+statusUpdate    WORKING
+statusUpdate    WORKING    "Reasoning..."
+statusUpdate    WORKING    "Processing tool.."
+artifactUpdate             "Conteggio in avanti fino a 3 terminato! ..."
+statusUpdate    COMPLETED
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+Il primo evento contiene il Task appena creato, in \texttt{SUBMITTED}. Segue il passaggio esplicito a \texttt{WORKING}, pubblicato da \texttt{execute} prima di iterare sul grafo, e un aggiornamento in \texttt{WORKING} per ogni passo del grafo: la decisione del modello di chiamare lo strumento e il risultato dello strumento. Lo stream si chiude con l'Artifact e con l'evento \texttt{COMPLETED}, come descritto nella Sezione~\ref{sec:execute}.
+
+\subsection{Cancellazione di un Task in esecuzione}
+
+Questo scenario corrisponde allo scenario~1 della Sezione~\ref{sec:cancel} (RF3). All'agente viene chiesto di contare fino a 30 in streaming. Dopo alcuni secondi, letto il \texttt{task\_id} dal primo evento, viene inviata la richiesta \texttt{CancelTask}. Ci si aspetta che il conteggio si interrompa, che il client riceva gli eventi di avanzamento seguiti dall'evento \texttt{CANCELED}, e che il Task risulti memorizzato come \texttt{CANCELED}. Lo stesso scenario è stato ripetuto con \texttt{SendMessage}, recuperando il \texttt{task\_id} con \texttt{ListTasks} mentre il client era ancora in attesa della risposta (Sezione~\ref{sec:difficolta-task-id}).
+
+Anche in questo caso il comportamento osservato coincide con quello atteso. In streaming, con la richiesta di cancellazione inviata dopo circa cinque secondi, il client riceve la sequenza seguente:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+\begin{verbatim}
+task            SUBMITTED
+statusUpdate    WORKING
+statusUpdate    WORKING    "Reasoning..."
+statusUpdate    CANCELED
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+La risposta a \texttt{CancelTask} restituisce il Task in \texttt{CANCELED}, e lo stesso stato è restituito da una successiva richiesta \texttt{GetTask}. Nei log del server il conteggio si ferma al numero~4, seguito dai messaggi con cui \texttt{cancel} registra la richiesta di cancellazione ed \texttt{execute} intercetta \texttt{CancelledError}. Lo strumento non arriva quindi a terminare, e non viene pubblicato né l'evento con il risultato dello strumento né l'Artifact: l'elaborazione è stata effettivamente interrotta, senza consumare ulteriori risorse, come richiesto da RF3. L'evento \texttt{CANCELED} è pubblicato da \texttt{execute}, secondo quanto previsto per lo scenario~1.
+
+In modalità sincrona il risultato è analogo. La richiesta \texttt{CancelTask} restituisce il Task in \texttt{CANCELED}, il conteggio nei log si interrompe allo stesso modo, e la risposta a \texttt{SendMessage}, rimasta in attesa fino a quel momento, arriva subito dopo con il Task in \texttt{CANCELED}.
+
+\subsection{Cancellazione di un Task in attesa}
+
+Questo scenario corrisponde allo scenario~2 (RF4). Il Task viene prima portato in \texttt{INPUT\_REQUIRED} e poi cancellato. In questo stato \texttt{execute} è già terminata, quindi è \texttt{cancel} a dover pubblicare l'evento \texttt{CANCELED}. Ci si aspetta che il Task passi in \texttt{CANCELED} e che un successivo \texttt{GetTask} lo restituisca in questo stato.
+
+Gli agenti CountUp e CountDown, così come sono scritti, non chiedono mai ulteriori informazioni all'utente. Per questo scenario è stata quindi usata una variante dell'agente CountUp che, se la richiesta non contiene un numero, invece di avviare il conteggio chiede all'utente fino a che numero contare. La modifica riguarda solo l'agente: il \texttt{BaseExecutor} è rimasto invariato, perché gestiva già il caso in cui l'agente richiede un input.
+
+Con la richiesta ``Conta'', in streaming, il client riceve gli eventi seguenti, dopo i quali lo stream si chiude:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+\begin{verbatim}
+task            SUBMITTED
+statusUpdate    WORKING
+statusUpdate    INPUT_REQUIRED    "Fino a che numero devo contare?"
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+Una successiva richiesta \texttt{CancelTask} restituisce il Task in \texttt{CANCELED}, e lo stesso stato è restituito da \texttt{GetTask}. Nei log del server si legge che \texttt{cancel} non trova il Task nel registro dei task in esecuzione, e quindi pubblica direttamente l'evento \texttt{CANCELED}, come previsto per lo scenario~2. Per verificare che l'evento raggiunga anche i client, lo scenario è stato ripetuto con un secondo client iscritto agli aggiornamenti del Task tramite \texttt{SubscribeToTask} prima della cancellazione: il client riceve prima il Task in \texttt{INPUT\_REQUIRED} e poi l'evento \texttt{CANCELED}. È proprio il caso discusso nella Sezione~\ref{sec:cancel}, in cui l'evento pubblicato da \texttt{cancel} è necessario perché un client in ascolto riceva lo stato terminale.
+
+Infine è stata verificata anche la ripresa del Task, senza cancellarlo. Rispondendo ``3'' con un nuovo messaggio sullo stesso \texttt{taskId}, il Task torna in \texttt{WORKING}, il conteggio viene eseguito e il Task arriva in \texttt{COMPLETED}. In questo secondo messaggio non viene pubblicato di nuovo l'evento \texttt{SUBMITTED}, perché il Task esiste già, come descritto nella Sezione~\ref{sec:execute}.
+
+\subsection{Task inesistente e cancellazioni ripetute}
+
+Questi scenari corrispondono allo scenario~3 della Sezione~\ref{sec:cancel}. Una richiesta \texttt{CancelTask} con un identificativo che non corrisponde a nessun Task, e un messaggio che fa riferimento a un \texttt{taskId} inesistente, devono essere respinti con \texttt{TaskNotFoundError} (RF5). Una seconda richiesta di cancellazione sullo stesso Task, inviata dopo la prima, non deve modificarne lo stato, che deve restare \texttt{CANCELED} (RF6).
+
+Entrambe le richieste che fanno riferimento a un Task inesistente vengono respinte dal gestore delle richieste dell'SDK, prima di raggiungere l'\texttt{AgentExecutor}, con l'errore \texttt{TaskNotFoundError} (codice JSON-RPC $-32001$, motivo \texttt{TASK\_NOT\_FOUND}). Il requisito RF5 è quindi soddisfatto senza bisogno di alcun controllo nel \texttt{BaseExecutor}.
+
+Per le cancellazioni ripetute sono stati provati due casi: un Task cancellato mentre era in esecuzione e uno cancellato mentre era in \texttt{INPUT\_REQUIRED}. In entrambi, la prima richiesta \texttt{CancelTask} porta il Task in \texttt{CANCELED}, mentre le richieste successive, inviate a distanza di circa un secondo, vengono respinte con \texttt{TaskNotCancelableError} (codice $-32002$, motivo \texttt{TASK\_NOT\_CANCELABLE}). Una richiesta \texttt{GetTask} finale restituisce il Task ancora in \texttt{CANCELED}, come richiesto da RF6. Anche questo controllo è svolto dall'SDK: le richieste successive alla prima non raggiungono \texttt{cancel}, e il registro dei task in esecuzione non viene interrogato.
+
+\subsection{Task concorrenti}
+
+L'ultimo scenario verifica che Task diversi siano gestiti in modo indipendente (RF7). Vengono avviati due Task in parallelo, uno per ciascun agente o due sullo stesso agente, e ne viene cancellato soltanto uno. Ci si aspetta che il Task cancellato passi in \texttt{CANCELED}, mentre l'altro prosegue fino a \texttt{COMPLETED}.
+
+Per questo scenario sono stati avviati in streaming due Task sullo stesso agente CountUp, con le richieste ``Conta fino a 10'' (Task~A) e ``Conta fino a 12'' (Task~B), e dopo circa cinque secondi è stata inviata una richiesta \texttt{CancelTask} per il solo Task~A. Il Task~A è passato subito in \texttt{CANCELED}, mentre il Task~B ha proseguito senza interruzioni ed è arrivato in \texttt{COMPLETED} dopo circa dodici secondi, con il proprio Artifact. Nei log del server i due conteggi procedono in parallelo fino al numero~4; dopo la cancellazione del Task~A prosegue soltanto quello del Task~B, fino a 12. Le richieste \texttt{GetTask} finali restituiscono il Task~A in \texttt{CANCELED} e il Task~B in \texttt{COMPLETED}. Il registro dei task in esecuzione, indicizzato per \texttt{task\_id}, ha quindi permesso a \texttt{cancel} di interrompere solo l'esecuzione richiesta, come previsto da RF7.
+
+\section{Riepilogo dei risultati}
+\label{sec:riepilogo-test}
+
+La Tabella~\ref{tab:riepilogo-test} riassume gli scenari svolti e i requisiti a cui si riferiscono.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabular}{p{0.30\linewidth} p{0.14\linewidth} p{0.16\linewidth} p{0.26\linewidth}}
+        \hline
+        \textbf{Scenario} & \textbf{Requisiti} & \textbf{Modalità} & \textbf{Esito} \\
+        \hline
+        Esecuzione completa & RF1, RF2 & sincrona, streaming & verificato \\
+        Cancellazione di un Task in esecuzione & RF3 & sincrona, streaming & verificato \\
+        Cancellazione di un Task in attesa & RF4 & streaming & verificato \\
+        Ripresa dopo una richiesta di input & RF2 & streaming & verificato \\
+        Task inesistente & RF5 & -- & verificato \\
+        Cancellazioni ripetute & RF6 & -- & verificato \\
+        Task concorrenti & RF7 & streaming & verificato \\
+        Due agenti, stesso executor & RNF1 & -- & verificato \\
+        \hline
+    \end{tabular}
+    \caption{Riepilogo degli scenari di test e dei requisiti verificati.}
+    \label{tab:riepilogo-test}
+\end{table}
+
+Tutti gli scenari hanno dato l'esito atteso. Il \texttt{BaseExecutor} ha gestito correttamente l'esecuzione e la cancellazione dei Task in entrambe le modalità di invocazione, sia per un Task in esecuzione sia per un Task in attesa di input, e lo ha fatto allo stesso modo con l'agente CountUp e con l'agente CountDown, senza modifiche. I controlli sui Task inesistenti e sulle cancellazioni ripetute sono stati svolti dall'SDK, prima che le richieste raggiungessero l'\texttt{AgentExecutor}, coerentemente con la divisione dei compiti descritta nella Sezione~\ref{sec:cancel}.
+
+\section{Limiti della validazione}
+\label{sec:limiti-validazione}
+
+La validazione svolta ha alcuni limiti. Il primo è che i test sono manuali. Ogni scenario richiede di inviare le richieste a mano e di confrontare le risposte con il comportamento atteso, e non può essere ripetuto in modo automatico dopo ogni modifica del codice. Inoltre, la necessità di leggere il \texttt{task\_id} e inviare la cancellazione a mano rende difficile controllare con precisione il momento in cui la richiesta arriva al server.
+
+Per lo stesso motivo non è stato possibile riprodurre i casi discussi nella Sezione~\ref{sec:limiti}. La cancellazione durante la pubblicazione dell'esito richiede di far arrivare la richiesta in una finestra di pochi millisecondi, che il ritardo inserito nello strumento dell'agente non allarga, perché la pubblicazione avviene dopo che lo strumento ha terminato. Anche il comportamento dell'SDK verso i Task appena completati dipende da tempi che non si possono controllare con richieste inviate a mano.
+
+Un possibile sviluppo è quindi l'introduzione di test automatici, che invochino direttamente il gestore delle richieste dell'SDK e controllino con precisione l'ordine degli eventi. Test di questo tipo permetterebbero di verificare anche i casi limite della Sezione~\ref{sec:limiti} e le soluzioni proposte per affrontarli.

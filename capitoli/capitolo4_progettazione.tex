@@ -9,7 +9,7 @@ Questo capitolo descrive la progettazione della gestione del ciclo di vita di un
 
 Come stabilito nel Capitolo~\ref{cap:requisiti}, l'interfaccia \texttt{AgentExecutor} prevede un unico metodo \texttt{execute}, invocato dal framework indipendentemente dalla modalità scelta dal client. I requisiti RF1 e RF2 richiedono però di gestire correttamente sia le chiamate sincrone (\texttt{SendMessage}) sia quelle in streaming (\texttt{SendStreamingMessage}), e in quest'ultimo caso di restituire anche tutti gli eventi intermedi. Il problema progettuale consisteva quindi nel soddisfare entrambe le modalità con un'unica implementazione di \texttt{execute}.
 
-Una prima soluzione possibile consiste nel far verificare a \texttt{execute}, a ogni invocazione, quale operazione abbia generato la richiesta, scegliendo di conseguenza quale metodo del grafo LangGraph chiamare. Con \texttt{SendMessage}, \texttt{execute} utilizzerebbe \texttt{ainvoke}, un metodo che esegue tutta l'elaborazione e restituisce un unico valore, cioè lo stato finale, solo alla fine. Con \texttt{SendStreamingMessage} utilizzerebbe invece \texttt{astream}, che restituisce un aggiornamento dopo ogni passo del grafo, così da pubblicare i relativi eventi sulla \texttt{EventQueue} mentre l'esecuzione avanza. Si avrebbero quindi due percorsi distinti nella stessa funzione, scelti con un controllo condizionale all'inizio di \texttt{execute}. Questo era l'approccio adottato dall'executor già presente in azienda, che sceglieva la modalità in base al nome del metodo RPC contenuto nella richiesta.
+Una prima soluzione possibile consiste nel far verificare a \texttt{execute}, a ogni invocazione, quale operazione abbia generato la richiesta, scegliendo di conseguenza quale metodo del grafo LangGraph chiamare. Con \texttt{SendMessage}, \texttt{execute} utilizzerebbe \texttt{ainvoke}, un metodo che esegue tutta l'elaborazione e restituisce un unico valore, cioè lo stato finale, solo alla fine. Con \texttt{SendStreamingMessage} utilizzerebbe invece \texttt{astream}, che restituisce un aggiornamento dopo ogni passo del grafo, così da pubblicare i relativi eventi sulla \texttt{EventQueue} mentre l'esecuzione avanza. Si avrebbero quindi due percorsi distinti nella stessa funzione, scelti con un controllo condizionale all'inizio di \texttt{execute}. 
 
 Questo approccio presenta però due limiti concreti. Il primo è che introduce nella logica applicativa dell'agente un'informazione che appartiene al livello di trasporto, cioè quale operazione RPC abbia originato la richiesta, in contrasto con il principio di separazione delle responsabilità. Il secondo è che costringe a mantenere due percorsi di codice paralleli e in gran parte ridondanti, destinati a evolvere in modo indipendente. Ogni caso particolare, come la richiesta di ulteriori input all'utente, andrebbe gestito allo stesso modo in entrambi i percorsi, e un aggiornamento applicato a uno solo dei due renderebbe diverso il comportamento delle due modalità senza che la differenza risulti evidente.
 
@@ -258,8 +258,8 @@ La Figura~\ref{fig:cancel-flow} mostra l'ordine in cui vengono valutate queste c
         \State $registro[task\_id].$\Call{Cancel}{}
         \State \Return
     \EndIf
-    \State $updater \gets$ nuovo \Call{TaskUpdater}{$event\_queue$, $task\_id$, $context.context\_id$} \Comment{scenario 2}
-    \State $updater.$\Call{Cancella}{}
+    \State $updater \gets$ nuovo \Call{TaskUpdater}{$event\_queue$, $task\_id$, $context.context\_id$}
+    \State $updater.$\Call{Cancella}{} \Comment{scenario 2}
 \EndFunction
 \end{algorithmic}
 \end{algorithm}

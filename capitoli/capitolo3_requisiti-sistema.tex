@@ -17,7 +17,7 @@ In sintesi, il sistema doveva essere in grado di gestire correttamente la cancel
 \label{sec:vincoli}
 
 \begin{itemize}
-    \item \textbf{Perimetro di intervento}: le classi relative alla logica interna degli agenti basata su LangGraph non dovevano essere modificate, in quanto già esistenti e già testate. Anche se l'aggiornamento alla nuova versione del protocollo ha comportato la modifica di diverse classi correlate all'SDK A2A, questa tesi si concentra esclusivamente sulla classe \texttt{AgentExecutor} e sulla porzione di server responsabile dell'esposizione dell'endpoint del protocollo A2A, in quanto componenti centrali per la gestione del ciclo di vita dei Task.
+    \item \textbf{Perimetro di intervento}: le classi relative alla logica interna degli agenti basata su LangGraph non dovevano essere modificate, in quanto già esistenti e già testate. Anche se l'aggiornamento alla nuova versione del protocollo ha comportato la modifica di diverse classi correlate all'SDK A2A, questa tesi si concentra sulla classe \texttt{AgentExecutor}, componente centrale per la gestione del ciclo di vita dei Task, e sulla configurazione del server che ne espone l'endpoint tramite i componenti dell'SDK.
     \item \textbf{Vincoli temporali}: il tirocinio aveva una durata massima di tre mesi.
     \item \textbf{Linguaggio e framework della base di codice esistente}: Python e LangGraph, già adottati internamente dall'azienda per la costruzione degli agenti.
     \item \textbf{Utilizzo dell'SDK ufficiale del protocollo A2A}: su indicazione del tutor aziendale, la gestione dei Task doveva basarsi sull'SDK Python ufficiale del protocollo (\texttt{a2a-sdk}), anziché su uno sviluppo autonomo a partire dalla sola specifica.

@@ -46,7 +46,7 @@ le quattro fasi, con particolare attenzione agli LLM, che sono il punto di parte
 Negli anni '90 nascono i modelli di linguaggio statistici (Statistical Language Model, SLM), che sono basati sull'assunzione di Markov: 
 la probabilità di una parola viene stimata a partire da un contesto limitato di parole precedenti, secondo una metodologia n-gram. 
 Un modello n-gram approssima la probabilità di un'intera sequenza di parole scomponendola in una serie di probabilità condizionate, 
-ciascuna delle quali dipende non dall'intera storia della sequenza ma soltanto dalle $n-1$ parole immediatamente precedenti:
+ciascuna delle quali dipende non dall'intera sequenza che la precede ma soltanto dalle $n-1$ parole immediatamente precedenti:
 
 \[
 P(w_1, w_2, \dots, w_T) \approx \prod_{t=1}^{T} P(w_t \mid w_{t-n+1}, \dots, w_{t-1})
@@ -84,7 +84,7 @@ Un primo tentativo in questa direzione viene fatto da ELMo \cite{peters2018elmo}
  stati nascosti della biLSTM applicata in entrambe le direzioni della sequenza.
 Il salto decisivo avviene però con BERT (Bidirectional Encoder Representations from Transformers) \cite{devlin2018bert}, che 
 abbandona le reti ricorrenti in favore di un'architettura basata sul meccanismo di attenzione \cite{vaswani2017attention}, più
- efficiente e parallelizzabile. BERT viene pre-addestrato con il \emph{masked language modeling} (MLM): una parte dei token
+ efficiente e parallelizzabile. I modelli moderni non elaborano direttamente le parole, ma unità più piccole chiamate \emph{token}, ottenute suddividendo il testo: un token può essere una parola intera, una sua parte o un segno di punteggiatura. Da qui in avanti si parlerà quindi di token, e la generazione di testo consiste nel predire un token alla volta. BERT viene pre-addestrato con il \emph{masked language modeling} (MLM): una parte dei token
   in input (il 15\% nel lavoro originale) viene mascherata, tipicamente sostituendola con il token speciale \texttt{[MASK]}, e
    il modello deve ricostruire i token originali usando il contesto sia a sinistra sia a destra:
 
@@ -119,7 +119,7 @@ Da questa caratteristica derivano due limiti strutturali:
 \begin{itemize}
 \item \textbf{Ragionamento a più passaggi.} Nei compiti che richiedono una sequenza di passaggi logici, come un problema aritmetico articolato
  o un ragionamento simbolico, chiedere direttamente la risposta finale costringe il modello a produrla senza esplicitare alcun passaggio
-  intermedio. Questo significa che il modello svolge, in un colpo solo, un ragionamento che una persona scomporrebbe in più passi. 
+  intermedio.
     \item \textbf{Accesso a informazioni esterne.} Il modello dispone soltanto della conoscenza codificata nei propri parametri durante
      l'addestramento. Di fronte a domande su eventi successivi a tale fase, o su informazioni che non ha appreso, non ha modo di reperire 
      i dati mancanti. Dunque, tende a generare risposte plausibili nella forma, ma errate nel contenuto: è una delle manifestazioni
@@ -134,7 +134,7 @@ Questa sezione presenta tre approcci che hanno affrontato questi limiti. Il prim
 \subsection{Il ragionamento esplicito: Chain-of-Thought}
 \label{sec:cot}
 
-Per il primo limite, la soluzione proposta in letteratura consiste nel far scrivere al modello i passaggi del ragionamento prima della risposta. Il punto di partenza è l'in-context learning, e in particolare il \emph{few-shot prompting} introdotto con GPT-3 \cite{brown2020gpt3}, in cui il prompt contiene alcuni esempi di problemi già risolti seguiti dalla nuova domanda.
+Il primo limite può essere affrontato chiedendo al modello di scrivere i passaggi del ragionamento prima di dare la risposta finale. Il punto di partenza è l'in-context learning, e in particolare il \emph{few-shot prompting} introdotto con GPT-3 \cite{brown2020gpt3}, in cui il prompt contiene alcuni esempi di problemi già risolti seguiti dalla nuova domanda.
 
 Se $x_i$ e $y_i$ sono la domanda e la risposta dell'$i$-esimo esempio e $x$ è la nuova istanza, il prompt $\mathcal{P}$ con $k$ esempi è
 \[
@@ -146,7 +146,7 @@ p_\theta(y \mid \mathcal{P}) = \prod_{t=1}^{|y|} p_\theta(y_t \mid \mathcal{P}, 
 \]
 con $p_\theta$ distribuzione del modello di parametri $\theta$, $y_t$ il $t$-esimo token della risposta e $y_{<t}$ i token che lo precedono.
 
-In questo schema i parametri restano fissi: il modello ricava dagli esempi il formato del compito e lo applica alla nuova domanda. Per compiti in cui la risposta segue quasi immediatamente dalla domanda, per esempio classificare il \emph{sentiment} di una frase, l'approccio funziona bene. Nei problemi a più passaggi invece gli esempi abituano il modello a scrivere subito il risultato, e tutto il ragionamento resta implicito.
+In questo schema i parametri restano fissi: il modello ricava dagli esempi il formato del compito e lo applica alla nuova domanda. Per compiti in cui la risposta segue quasi immediatamente dalla domanda, per esempio stabilire se una recensione esprime un giudizio positivo o negativo, l'approccio funziona bene. Nei problemi a più passaggi invece gli esempi abituano il modello a scrivere subito il risultato, e tutto il ragionamento resta implicito.
 
 \subsubsection{Il prompting Chain-of-Thought}
 
@@ -211,7 +211,7 @@ Kojima et al.\ \cite{kojima2022zeroshot} hanno poi osservato che gli esempi non 
 
 \subsubsection{Limiti: un ragionamento chiuso}
 
-Con Chain-of-Thought il modello ragiona meglio, ma sempre sulle stesse informazioni, cioè quelle contenute nei suoi parametri. Se un fatto usato nella catena è sbagliato o manca, il modello non può accorgersene e l'errore si trascina nei passaggi successivi, con il risultato di un ragionamento formalmente coerente ma basato su una premessa falsa. Yao et al.\ \cite{yao2023react} notano proprio che, nei compiti che richiedono conoscenze fattuali, la causa principale degli errori di Chain-of-Thought è l'allucinazione di fatti. Il primo limite viene quindi affrontato, il secondo no. Per risolverlo il modello deve poter cercare informazioni ed eseguire operazioni all'esterno, tramite strumenti.
+Con Chain-of-Thought il modello ragiona meglio, ma sempre sulle stesse informazioni, cioè quelle contenute nei suoi parametri. Se un dato usato nella catena è sbagliato o manca, il modello non può accorgersene e l'errore si trascina nei passaggi successivi, con il risultato di un ragionamento formalmente coerente ma basato su una premessa falsa. Yao et al.\ \cite{yao2023react} notano proprio che, nei compiti che richiedono conoscenze fattuali, la causa principale degli errori di Chain-of-Thought è l'allucinazione. Il primo limite viene quindi affrontato, il secondo no. Per risolverlo il modello deve poter cercare informazioni ed eseguire operazioni all'esterno, tramite strumenti.
 
 \subsection{L'utilizzo di strumenti esterni: Toolformer}
 \label{sec:toolformer}
@@ -234,7 +234,7 @@ In questo modo il testo rimane una normale sequenza di token, che il modello pu�
 
 \subsubsection{Costruzione del dataset e addestramento}
 
-Si parte da un corpus di testo normale, senza chiamate. Per ogni testo Toolformer ne costruisce una versione con le chiamate che risultano utili, seguendo tre passi (Figura~\ref{fig:toolformer}):
+Si parte da una raccolta di testi ordinari, che non contengono chiamate a strumenti. Per ogni testo Toolformer ne costruisce una versione con le chiamate che risultano utili, seguendo tre passi (Figura~\ref{fig:toolformer}):
 
 \begin{enumerate}
     \item \textbf{Campionamento.} Al modello vengono dati alcuni esempi, scritti a mano, di testi annotati con chiamate a uno strumento. A partire da questi il modello sceglie i punti del testo in cui una chiamata potrebbe servire e per ciascuno propone alcune chiamate candidate.
@@ -295,7 +295,7 @@ Si parte da un corpus di testo normale, senza chiamate. Per ogni testo Toolforme
     \label{fig:toolformer}
 \end{figure}
 
-Le chiamate che passano il filtro vengono inserite nel testo nel punto in cui erano state proposte. Ripetendo la procedura su tutto il corpus e per tutti gli strumenti si ottiene un nuovo dataset, su cui si esegue il fine-tuning del modello con il solito obiettivo di predizione del token successivo. I testi sono gli stessi del corpus di partenza, con in più le chiamate, per cui il modello impara a usare gli strumenti senza perdere le capacità generali.
+Le chiamate che passano il filtro vengono inserite nel testo nel punto in cui erano state proposte. Ripetendo la procedura su tutti i testi della raccolta e per tutti gli strumenti si ottiene un nuovo dataset, su cui si esegue il fine-tuning del modello con il solito obiettivo di predizione del token successivo. I testi sono gli stessi della raccolta di partenza, con in più le chiamate, per cui il modello impara a usare gli strumenti senza perdere le capacità generali.
 
 Durante l'inferenza il modello genera normalmente finché non produce il token ``$\rightarrow$''. A quel punto la generazione si ferma, la chiamata viene eseguita, il risultato viene aggiunto al testo e la generazione riparte. Il risultato fa quindi parte del contesto e influenza i token successivi, in modo simile ai passaggi intermedi di Chain-of-Thought.
 
@@ -314,11 +314,11 @@ ReAct (\emph{Reasoning and Acting}) \cite{yao2023react} mette insieme le due cap
 
 \subsubsection{Formulazione}
 
-Yao et al.\ formulano il problema in termini di un agente che interagisce con un ambiente. Al passo $t$ l'agente riceve un'osservazione $o_t \in \mathcal{O}$ ed esegue un'azione $a_t \in \mathcal{A}$, scelta da una politica $\pi$ in base al \emph{contesto} $c_t$, che contiene tutta la storia dell'interazione:
+Yao et al.\ formulano il problema in termini di un agente che interagisce con un ambiente. Al passo $t$ l'agente riceve un'osservazione $o_t \in \mathcal{O}$ ed esegue un'azione $a_t \in \mathcal{A}$, scelta da una politica $\pi$ in base al \emph{contesto} $c_t$, che contiene la cronologia completa dell'interazione:
 \[
 c_t = (o_1, a_1, \dots, o_{t-1}, a_{t-1}, o_t), \qquad a_t \sim \pi(a_t \mid c_t)
 \]
-Nei compiti complessi, per scegliere l'azione giusta può essere necessario mettere insieme informazioni sparse nella storia, pianificare i passi successivi o rendersi conto che un'azione precedente non ha avuto l'effetto previsto. ReAct affronta il problema aggiungendo allo spazio delle azioni lo spazio $\mathcal{L}$ del linguaggio naturale:
+Nei compiti complessi, per scegliere l'azione giusta può essere necessario mettere insieme informazioni sparse nel contesto, pianificare i passi successivi o rendersi conto che un'azione precedente non ha avuto l'effetto previsto. ReAct affronta il problema aggiungendo allo spazio delle azioni lo spazio $\mathcal{L}$ del linguaggio naturale:
 \[
 \hat{\mathcal{A}} = \mathcal{A} \cup \mathcal{L}
 \]
@@ -423,7 +423,7 @@ f : \mathcal{O}^* \rightarrow \mathcal{A}
 \]
 dove $\mathcal{O}^*$ è l'insieme delle sequenze finite di osservazioni e $\mathcal{A}$ l'insieme delle azioni possibili. La definizione è molto generale: un termostato, un robot e un programma che opera su un sistema informatico sono tutti agenti, e differiscono per l'ambiente in cui operano, per ciò che possono percepire e per le azioni disponibili.
 
-In un \emph{agente basato su LLM} questa funzione è realizzata da un modello di linguaggio. La formulazione è quella di ReAct vista nella Sezione~\ref{sec:react}: l'LLM sceglie l'azione $a_t$ in base al contesto $c_t$, che contiene la storia di osservazioni e azioni,
+In un \emph{agente basato su LLM} questa funzione è realizzata da un modello di linguaggio. La formulazione è quella di ReAct vista nella Sezione~\ref{sec:react}: l'LLM sceglie l'azione $a_t$ in base al contesto $c_t$, che contiene le osservazioni e le azioni precedenti,
 \[
 a_t \sim p_\theta\big(\,\cdot \mid \mathcal{P}_{\text{agente}} \oplus c_t\big)
 \]
@@ -431,7 +431,7 @@ dove $\mathcal{P}_{\text{agente}}$ è il prompt con la descrizione del compito, 
 
 Questa definizione permette di distinguere chiaramente LLM e agente. L'LLM è un \emph{componente}, cioè un modello che dato un testo ne genera la continuazione. L'agente è invece un \emph{sistema} in cui l'LLM prende le decisioni, ma che include anche il ciclo di interazione con l'ambiente, gli strumenti con cui agire e la memoria in cui conservare informazioni nel tempo. Le differenze principali sono riassunte nella Tabella~\ref{tab:llm-agente}.
 
-\begin{table}[htbp]
+\begin{table}[!ht]
     \centering
     \small
     \begin{tabular}{p{3.2cm} p{5cm} p{5cm}}
@@ -448,6 +448,8 @@ Questa definizione permette di distinguere chiaramente LLM e agente. L'LLM è un
     \caption{Confronto tra un LLM e un agente basato su LLM.}
     \label{tab:llm-agente}
 \end{table}
+
+\FloatBarrier
 
 \subsection{I componenti tipici}
 
@@ -488,7 +490,7 @@ Wang et al.\ \cite{wang2024agentsurvey} hanno analizzato un gran numero di siste
 
 \paragraph{Profilo.} Il profilo stabilisce l'identità dell'agente, cioè il ruolo, gli obiettivi, le regole di comportamento e lo stile delle risposte. Di solito è scritto in linguaggio naturale nel prompt di sistema, la parte di $\mathcal{P}_{\text{agente}}$ che precede l'interazione e la condiziona a ogni passo. Grazie al profilo, partendo dallo stesso LLM si possono costruire agenti specializzati in compiti diversi.
 
-\paragraph{Memoria.} La memoria conserva le informazioni raccolte durante l'interazione. Un LLM, infatti, non mantiene alcuno stato tra una richiesta e l'altra, e dispone solo del contesto della richiesta corrente. Si distinguono due livelli. La \emph{memoria a breve termine} è il contesto del modello, cioè la storia dell'interazione in corso (il $c_t$ di ReAct), ed è limitata dalla dimensione della finestra di contesto. La \emph{memoria a lungo termine} si trova invece in un archivio esterno, ad esempio un database, da cui le informazioni utili vengono recuperate e inserite nel contesto quando servono; in questo modo l'agente può conservare conoscenze ed esperienze anche tra interazioni diverse.
+\paragraph{Memoria.} La memoria conserva le informazioni raccolte durante l'interazione. Un LLM, infatti, non mantiene alcuno stato tra una richiesta e l'altra, e dispone solo del contesto della richiesta corrente. Si distinguono due livelli. La \emph{memoria a breve termine} è il contesto del modello, cioè la cronologia dell'interazione in corso (il $c_t$ di ReAct), ed è limitata dalla dimensione della finestra di contesto. La \emph{memoria a lungo termine} si trova invece in un archivio esterno, ad esempio un database, da cui le informazioni utili vengono recuperate e inserite nel contesto quando servono; in questo modo l'agente può conservare conoscenze ed esperienze anche tra interazioni diverse.
 
 \paragraph{Pianificazione.} La pianificazione riguarda il modo di affrontare un compito, cioè come scomporlo in sotto-obiettivi e in che ordine perseguirli. Wang et al.\ distinguono tra pianificazione \emph{senza retroazione}, in cui il piano viene definito interamente prima dell'esecuzione (come nella catena di ragionamento di Chain-of-Thought), e pianificazione \emph{con retroazione}, in cui il piano viene modificato in base alle osservazioni (come con i pensieri di ReAct). Solo la seconda permette all'agente di reagire agli imprevisti, come la ricerca fallita della Figura~\ref{fig:react-esempio}.
 
