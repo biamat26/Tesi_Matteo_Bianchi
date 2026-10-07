@@ -8,7 +8,6 @@
 
 \annoAccademico{2025/2026}
 
-\dedica{Questa è la dedica}
 
 \usepackage[plainpages=false,hypertexnames=false]{hyperref}
 \usepackage[all]{hypcap}
@@ -19,8 +18,9 @@
 \usetikzlibrary{arrows.meta, positioning, decorations.pathreplacing}
 \usepackage{algorithm}
 \floatname{algorithm}{Algoritmo} % didascalie in italiano
+\setpnumwidth{2.2em} % spazio per i numeri di pagina romani nell'indice (es. viii)
 \usepackage{algpseudocode}
-\usepackage{placeins}
+\usepackage{placeins} 
 \algdef{SE}[TRY]{Try}{EndTry}{\textbf{try}}{\textbf{end try}}
 \algdef{C}[TRY]{TRY}{Catch}[1]{ \textbf{catch} #1}
 \algdef{C}[TRY]{TRY}{Finally}{\textbf{finally}}
@@ -33,10 +33,8 @@
 \begin{document}
 \frontmatter
 \generaFrontespizio
-\generaDedica
-\ringraziamenti{ringraziamenti}
-\introduzione{introduzione}
 \generaIndice
+\introduzione{introduzione}
 
 \mainmatter
 \capitolo{Dagli LLM agli agenti}{capitoli/capitolo1_llm-e-agenti}
@@ -52,5 +50,7 @@
 \conclusioni{conclusioni}
 
 \bibliography{bibliografia}
+
+\ringraziamenti{ringraziamenti}
 
 \end{document}

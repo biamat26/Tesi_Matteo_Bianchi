@@ -26,7 +26,7 @@ In sintesi, il sistema doveva essere in grado di gestire correttamente la cancel
     \item \textbf{Metodo unico per l'esecuzione}: l'interfaccia \texttt{AgentExecutor} definisce \texttt{execute} come un unico metodo, invocato dal framework indipendentemente dalla modalità di invocazione richiesta dal client, sincrona o in streaming \cite{a2apythondocs}. La distinzione tra le due modalità non può pertanto essere gestita tramite due implementazioni separate a livello di interfaccia.
 \end{itemize}
 
-Nel rispetto di questi vincoli, la soluzione è stata sviluppata e verificata in un progetto di test indipendente dal codice aziendale, composto da due agenti di esempio e da una classe \texttt{BaseExecutor} comune, che implementa l'interfaccia \texttt{AgentExecutor} senza dipendere dalla logica specifica dei singoli agenti.
+Nel rispetto di questi vincoli, la soluzione è stata sviluppata e verificata in un progetto di test indipendente dal codice aziendale, composto da due agenti di esempio e da una classe \texttt{BaseExecutor} comune, che implementa l'interfaccia \texttt{AgentExecutor} senza dipendere dalla logica specifica dei singoli agenti. Nel codice aziendale, oltre all'aggiornamento alla versione 1.0 del protocollo, il lavoro ha riguardato la scrittura del metodo \texttt{cancel}, prima assente, e la revisione di una parte di \texttt{execute}, così da integrarli con il resto della piattaforma.
 
 Non sono stati imposti vincoli relativi allo stile di scrittura del codice o all'adozione di pattern architetturali predefiniti: le scelte progettuali discusse nel Capitolo~\ref{cap:progettazione} sono state pertanto decisioni autonome, motivate dalle esigenze specifiche del sistema.
 
